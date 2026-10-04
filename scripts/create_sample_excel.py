@@ -1,0 +1,182 @@
+import openpyxl
+
+def generate_multi_sheet_excel(output_path="resources/sample_control_policial.xlsx"):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+
+    # 1. BD Sheet
+    ws_bd = wb.create_sheet(title="BD")
+    ws_bd.append(["", "BASE DE DATOS PNP - DEPINCRI"])
+    ws_bd.append([])
+    ws_bd.append(["", "CÓDIGO", "APELLIDOS", "NOMBRES", "SA-PNP", "ÁREA"])
+
+    officers = [
+        ("APF-01", "ACERO VILCA", "WILLIAMS ALVARO", "32643449", "AREPOFIS"),
+        ("APF-02", "ADCO MASÍAS", "JHON ALEX", "32643651", "AREPOFIS"),
+        ("APJ-01", "ADRIAZOLA VIZARRETA", "JEANETH K.", "31566943", "AREPJR"),
+        ("AIN-01", "ALANOCA FORA", "", "", "AREINCRI"),
+        ("DEP-01", "ALBARRACIN CALCINA", "EDWIN NESTOR", "358769", "DEPINCRI"),
+        ("APJ-02", "ALLENDE SULLCA", "ANTONI", "32590167", "AREPJR"),
+        ("DEP-02", "ANCCASI CCAMA", "MARIA DEL CARMEN", "32576584", "DEPINCRI"),
+        ("APF-03", "AÑACATA HUANCCO", "RUDY AYMAR", "32643343", "AREPOFIS"),
+        ("AIN-02", "ARCE QUISPE", "ALEX BENJAMIN", "31902728", "AREINCRI"),
+        ("ADR-01", "ARMEJO BEDREGAL", "FELIPE", "31966565", "AREANDRO"),
+        ("DEP-03", "AROCUTIPA TARQUI", "HEBERSON", "32355259", "DEPINCRI"),
+        ("AIN-03", "ARONI SALAS", "ROGER A.", "31988362", "AREINCRI"),
+        ("AIN-04", "ATAU VALENCIA", "JOSE LUIS", "32590183", "AREINCRI"),
+        ("SEC-01", "ATAUCHI VERGARA", "LEIBSNITZ J.", "31966598", "SECINT"),
+        ("ADR-02", "BACA MOJONERO", "ALVARO", "32590159", "AREANDRO"),
+        ("SEC-02", "BAEZ PUMA", "YHUMIRA", "31904461", "SECINT"),
+        ("APF-04", "BARRANTES QUIROGA", "MIJAIL HECTOR", "32643270", "AREPOFIS"),
+        ("APF-05", "BEJAR GARCIA", "ROSA E.", "31768690", "AREPOFIS"),
+        ("APJ-03", "BENIQUE SAAVEDRA", "LUIS F.", "32643457", "AREPJR"),
+        ("ADR-03", "BETANCUR SALAZAR", "REYNALDO", "31911808", "AREANDRO"),
+        ("SEC-03", "CACERES CHURA", "RAYIN DBETO", "31808185", "SECINT"),
+        ("AIN-05", "CALATAYUD PAUCAR", "MAYKOL S.", "32643310", "AREINCRI"),
+        ("ADR-04", "CALCINA ANCCO", "FREDY GELBER", "31567153", "AREANDRO"),
+        ("APJ-04", "CALCINA SANCA", "SAMUEL FRANKLIN", "32643595", "AREPJR"),
+        ("AIN-06", "CALDERON IQUISE", "OSCAR OLIVER", "32643619", "AREINCRI"),
+        ("AIN-07", "CALSINA CALSINA", "MEDALY FIORELA", "32627573", "AREINCRI"),
+        ("AIN-08", "CAMANI CUSIHUAMAN", "ANDY", "32590248", "AREINCRI"),
+        ("AIN-09", "CANAZA CAMACHO", "RICHARD", "31356165", "AREINCRI"),
+        ("AIN-10", "CANDRO CCACCA", "JEAN FRANCO", "32643546", "AREINCRI"),
+        ("AIN-11", "CAPIA MAMANI", "SALOMON ISAIAS", "32643684", "AREINCRI"),
+        ("ACT-01", "CARABALLO VENERO", "RAFAEL", "30879115", "ARECOTER"),
+        ("AIN-12", "CARCAHUSTO JARA", "CRISTIAN P.", "32643440", "AREINCRI"),
+        ("ADR-05", "CASQUINO RAMOS", "FRANZ", "31471135", "AREANDRO"),
+        ("APF-06", "CASTRO FUENTES", "MARCO ANTONIO", "32474101", "AREPOFIS"),
+        ("APJ-05", "CCOPA APAZA", "GUSTAVO VLADIMIR", "32520985", "AREPJR"),
+        ("AIN-13", "CESPEDES ATAMARY", "ADDERLY MAT", "31447549", "AREINCRI"),
+        ("AIN-14", "CHACHAYMA DAMIANO", "MAX WILIAND", "32474361", "AREINCRI"),
+        ("APF-07", "CHAVEZ TERAN", "HAYMEE PAMELA", "424004", "AREPOFIS"),
+        ("APF-08", "CHILE ALEGRE", "ERICCSON HARLY", "31850272", "AREPOFIS"),
+        ("APJ-06", "CHOQUE LOPEZ", "MILTON A.", "32085553", "AREPJR"),
+        ("AIN-15", "COARICONA CATACORA", "LIZARDO", "32550806", "AREINCRI"),
+        ("ADR-06", "CONDORI CCOTO", "LUIS A.", "31351977", "AREANDRO"),
+        ("AIN-16", "CONDORI CHAMPI", "JUAN CARLOS", "32540029", "AREINCRI"),
+        ("APJ-07", "CONDORI CRUZ", "ELVIS ROBERTO", "32550233", "AREPJR"),
+        ("AIN-17", "CONSA QUISPE", "VICTOR SAMUEL", "32590086", "AREINCRI"),
+        ("AIN-18", "CONSTANZA ARGOLLO", "GABY SOLAR", "31891672", "AREINCRI"),
+        ("APJ-08", "CUTIPA LAQUI", "INMANUEL D.", "32550274", "AREPJR"),
+        ("AIN-19", "DAVILA HUAMAN", "ADENAER", "32590142", "AREINCRI"),
+        ("APF-09", "DIAZ HUAMANI", "JAVIER REDU", "31538122", "AREPOFIS"),
+        ("AIN-20", "ESCALANTE CARRASCO", "AMANCIO", "31312829", "AREINCRI"),
+        ("DEP-04", "FALCON CENTENO", "FATIMA", "31859718", "DEPINCRI"),
+        ("ADR-07", "FLORES BARRIENTOS", "SANDRO", "31460135", "AREANDRO"),
+        ("AIN-21", "GÓMEZ MAQUERA", "DEIVID GRISEL", "32473965", "AREINCRI"),
+        ("APJ-09", "HERRERA PULCHA", "JUAN A.", "30729687", "AREPJR"),
+        ("AIN-22", "HUANCA LUDEÑA", "HANZ JOSE", "32590094", "AREINCRI"),
+        ("AIN-23", "HUARACA FUENTES", "ROBERTO C.", "32267122", "AREINCRI"),
+        ("DEP-05", "HUARACHA FLOREZ", "JUAN RONALD", "31607207", "DEPINCRI"),
+        ("AIN-24", "HUAYLLA BARRETO", "FREDY A.", "32550290", "AREINCRI"),
+        ("AIN-25", "IBEROS ORDOÑEZ", "ALEJANDRO", "32053396", "AREINCRI"),
+        ("AIN-26", "ITUSACA ARAPA", "JOEL J.", "32355389", "AREINCRI"),
+        ("SEC-04", "JALANOCA LAURA", "FERNANDO WINSTON", "32550200", "SECINT"),
+        ("AIN-27", "JIMENEZ GARCIA", "CARLOS A.", "31665106", "AREINCRI"),
+        ("AIN-28", "LAGONES CCALLATA", "CRISTHIAM CARLOS", "32550322", "AREINCRI"),
+        ("AIN-29", "LAIME LAYME", "FRAN E.", "32590231", "AREINCRI"),
+        ("APJ-10", "LOPEZ AQUINO", "MANUEL P.", "31642491", "AREPJR"),
+        ("ACT-02", "LOPEZ TICONA", "ANTONIO CARLOS", "32474012", "ARECOTER"),
+        ("AIN-30", "LOPEZ TORRES", "KELLY R.", "31808882", "AREINCRI"),
+        ("APF-10", "MACEDO CARBAJAL", "", "", "AREPOFIS"),
+        ("AIN-31", "MAMANI CALDERON", "GRIMALDO", "32472993", "AREINCRI"),
+        ("AIN-32", "MAMANI CCACASACA", "JOHAN ELBER", "32550136", "AREINCRI"),
+        ("ADR-08", "MAMANI CONDORI", "PEDRO FERNANDO", "32355429", "AREANDRO"),
+        ("SEC-05", "MAMANI PARI", "ALFREDO", "32590150", "SECINT"),
+        ("AIN-33", "MAMANI PUMA", "JUAN LEE", "32590053", "AREINCRI"),
+        ("ADR-09", "MAMANI QUISPE", "RAMON RAUL", "30898320", "AREANDRO"),
+        ("AIN-34", "MAMANI RAMOS", "WILSON", "31859823", "AREINCRI"),
+        ("AIN-35", "MAMANI SILLO", "EDWIN", "31809035", "AREINCRI"),
+        ("AIN-36", "MEDINA QUISPE", "JENY LUZ", "32135773", "AREINCRI"),
+        ("AIN-37", "MIRAMIRA GALINDO", "AARON", "32236537", "AREINCRI"),
+        ("SEC-06", "MORA QUISPE", "JHON E.", "32590061", "SECINT"),
+        ("SEC-07", "NINA ARPA", "JOSE LUIS", "32549927", "SECINT"),
+        ("APJ-11", "OLIVERA VARJA", "LUIS GUSTAVO", "", "AREPJR"),
+        ("APF-11", "PACHECO QUISPE", "YUMI TATIANA", "31606673", "AREPOFIS"),
+        ("AIN-38", "PACOMPIA MAMANI", "RONY ELVIS", "32409423", "AREINCRI"),
+        ("ADR-10", "PAMPA CONDORI", "ROZELA", "32129033", "AREANDRO"),
+        ("APF-12", "PAUCAR MORA", "SANDRA", "31561426", "AREPOFIS"),
+        ("AIN-39", "PEREZ CUTIPA", "DAVID", "32127754", "AREINCRI"),
+        ("APF-13", "PICHO OLIVERA", "WALDIR BRYAN", "31666970", "AREPOFIS"),
+        ("AIN-40", "PINEDA PEQQUEÑA", "ALONSO WILLIAN", "31897075", "AREINCRI"),
+        ("AIN-41", "PUMA FERNANDEZ", "JHON B", "32590207", "AREINCRI"),
+        ("AIN-42", "QUINTANILLA ESPINOSA", "ALEX S.", "38590037", "AREINCRI"),
+        ("AIN-43", "QUISPE ARPASI", "JHON EMERSON", "32431025", "AREINCRI"),
+        ("AIN-44", "QUISPE HUACASI", "JOSEEN M.", "32410265", "AREINCRI"),
+        ("ACT-03", "QUISPE HUAMANTUMA", "MELISSA", "31827017", "ARECOTER"),
+        ("DEP-06", "QUISPE MAMANI", "VANESA", "", "DEPINCRI"),
+        ("ADR-11", "QUISPE QUISPE", "EDWIN RAFAEL", "31559848", "AREANDRO"),
+        ("APJ-12", "QUISPE REYES", "CARMELO", "31702430", "AREPJR"),
+        ("ADR-12", "QUISPE TTICA", "JHONATAN", "32590191", "AREANDRO"),
+        ("AIN-45", "ROJAS CARRASCO", "CRISTOPHER", "3259004", "AREINCRI"),
+        ("APF-14", "ROJAS VELARDE", "DENIS PAUL", "32521998", "AREPOFIS"),
+        ("APJ-13", "ROLDAN AYTE", "HARRY M.", "31969335", "AREPJR"),
+        ("APF-15", "SARMIENTO GARCIA", "BERLY", "32575458", "AREPOFIS"),
+        ("AIN-46", "SOTO ARIAS", "JASON ORLANDO", "405731", "AREINCRI"),
+        ("AIN-47", "SUAÑA HUAYLLA", "MARKO BRYAN", "32549943", "AREINCRI"),
+        ("AIN-48", "SUTTA DELGADO", "CRISTHIAN SHANDE", "32590101", "AREINCRI"),
+        ("APJ-14", "TAPIA APAZA", "JUAN FERNANDO", "32127210", "AREPJR"),
+        ("AIN-49", "TAYRO CALSIN", "FRANK DEYVIS", "32575271", "AREINCRI"),
+        ("ADR-13", "TICONA CHURA", "ALAN YONATAN", "32550217", "AREANDRO"),
+        ("ADR-14", "TICONA PALOMINO", "TANIA E.", "32127243", "AREANDRO"),
+        ("ACT-04", "TICONA PARI", "EFRAIN", "31059972", "ARECOTER"),
+        ("APF-16", "TICONA TIPO", "PATY", "32488448", "AREPOFIS"),
+        ("APF-17", "TIPO CHAMBILLA", "", "", "AREPOFIS"),
+        ("DEP-07", "USCA LAYME", "ITALA INGRID", "31745929", "DEPINCRI"),
+        ("AIN-50", "VALDIVIA GUTIERREZ", "RENATO ALEXANDER", "31905077", "AREINCRI"),
+        ("APJ-15", "VARGAS VIZA", "RENÉ", "31724206", "AREPJR"),
+        ("ACT-05", "VEGA HUARAC", "JUAN MANUEL", "32590134", "ARECOTER"),
+        ("AIN-51", "VEGA HUARAC", "JUAN MANUEL", "32590134", "AREINCRI"),
+        ("AIN-52", "VENERO CORPUNA", "MANUEL P.", "31624022", "AREINCRI"),
+        ("ADR-15", "VILLALTA QUISPE", "ROOY JESUS", "32550055", "AREANDRO"),
+        ("APJ-16", "YANCACHAJLLA BAUTISTA", "ELOY", "30939006", "AREPJR"),
+        ("AIN-53", "YAPO MAMANI", "EDISON", "31969702", "AREINCRI"),
+        ("AIN-54", "YAPUCHURA COARITA", "DIAMID", "32355234", "AREINCRI"),
+        ("AIN-55", "YUCRA CONDORI", "MEDALITH", "31647562", "AREINCRI"),
+        ("AIN-56", "ZAMBRANO HUAYHUA", "PETER", "31745159", "AREINCRI"),
+        ("APJ-17", "ZUÑIGA CUSIYUPANQUI", "FRANK", "31559937", "AREPJR"),
+        ("APF-18", "ZUÑIGA QUISPE", "OSCAR DAVID", "32576584", "AREPOFIS")
+    ]
+
+    for o in officers:
+        ws_bd.append(["", o[0], o[1], o[2], o[3], o[4]])
+
+    # 2. C_JULIO Sheet (31 days)
+    ws_julio = wb.create_sheet(title="C_JULIO")
+    ws_julio.append(["CONTROL DE ENTREGA DE TICKETS - JULIO 2026"])
+    ws_julio.append(["MES CERRADO", "", "FECHA: 31/07/2026 20:54", "", "USUARIO: ADMI"])
+    h_julio = ["CÓDIGO", "APELLIDOS", "NOMBRES", "SA-PNP", "ÁREA"] + [str(d) for d in range(1, 32)] + ["TOTAL"]
+    ws_julio.append(h_julio)
+
+    for o in officers:
+        # Give mark X to first 15 days
+        row_data = [o[0], o[1], o[2], o[3], o[4]] + ["X"] * 15 + [""] * 16 + [15]
+        ws_julio.append(row_data)
+
+    # 3. C_AGOSTO Sheet (31 days)
+    ws_agosto = wb.create_sheet(title="C_AGOSTO")
+    ws_agosto.append(["CONTROL DE ENTREGA DE TICKETS - AGOSTO 2026"])
+    ws_agosto.append(["MES CERRADO", "", "FECHA: 31/08/2026 20:54", "", "USUARIO: ADMI"])
+    h_agosto = ["CÓDIGO", "APELLIDOS", "NOMBRES", "SA-PNP", "ÁREA"] + [str(d) for d in range(1, 32)] + ["TOTAL"]
+    ws_agosto.append(h_agosto)
+
+    for o in officers:
+        row_data = [o[0], o[1], o[2], o[3], o[4]] + ["X"] * 18 + [""] * 13 + [18]
+        ws_agosto.append(row_data)
+
+    # 4. C_SETIEMBRE Sheet (30 days)
+    ws_set = wb.create_sheet(title="C_SETIEMBRE")
+    ws_set.append(["CONTROL DE ENTREGA DE TICKETS - SETIEMBRE 2026"])
+    ws_set.append([])
+    h_set = ["CÓDIGO", "APELLIDOS", "NOMBRES", "SA-PNP", "ÁREA"] + [str(d) for d in range(1, 31)] + ["TOTAL"]
+    ws_set.append(h_set)
+
+    for o in officers:
+        row_data = [o[0], o[1], o[2], o[3], o[4]] + ["X"] * 4 + [""] * 26 + [4]
+        ws_set.append(row_data)
+
+    wb.save(output_path)
+    print("Multi-sheet Excel created successfully.")
+
+if __name__ == "__main__":
+    generate_multi_sheet_excel()

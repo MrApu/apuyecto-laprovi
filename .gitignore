@@ -1,0 +1,29 @@
+# Python & Environments
+.python/
+.git_bin/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# PyInstaller builds
+build/
+dist/
+*.spec
+
+# Testing & Caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local databases & logs
+*.db-wal
+*.db-shm
+*.db-journal
+backups_db/
+
+# IDE & OS
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
