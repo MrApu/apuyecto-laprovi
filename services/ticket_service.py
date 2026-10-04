@@ -62,6 +62,7 @@ class TicketService:
         para_unidad: int,
         local: int,
         vales_policiales: int = 0,
+        local_id: str = "restaurante",
         observacion: Optional[str] = None,
         usuario: str = "USUARIO",
         motivo_ajuste: Optional[str] = None
@@ -73,10 +74,11 @@ class TicketService:
         dia_semana = DIAS_SEMANA_ES[dt.weekday()]
         total = para_unidad + local
 
-        actual = self.repo.get_ticket_diario_by_fecha(fecha)
+        actual = self.repo.get_ticket_diario_by_fecha(fecha, local_id=local_id)
 
         td = TicketDiario(
             fecha=fecha,
+            local_id=local_id,
             anio=dt.year,
             mes=dt.month,
             dia=dt.day,
