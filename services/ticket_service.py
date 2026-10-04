@@ -52,9 +52,9 @@ class TicketService:
         return self.repo.get_historial_policia(policia_id)
 
     # --- Calendario Policial ---
-    def get_calendario_mes(self, anio: int, mes: int) -> List[TicketDiario]:
-        self.repo.inicializar_dias_mes(anio, mes)
-        return self.repo.get_tickets_diarios_mes(anio, mes)
+    def get_calendario_mes(self, anio: int, mes: int, local_id: str = "restaurante") -> List[TicketDiario]:
+        self.repo.inicializar_dias_mes(anio, mes, local_id=local_id)
+        return self.repo.get_tickets_diarios_mes(anio, mes, local_id=local_id)
 
     def guardar_ticket_diario(
         self,

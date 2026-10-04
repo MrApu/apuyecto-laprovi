@@ -95,7 +95,7 @@ class VentasView(QWidget):
         layout.addWidget(self.lbl_resumen)
 
     def cargar_datos(self):
-        diarios = self.ticket_service.get_calendario_mes(self.current_anio, self.current_mes)
+        diarios = self.ticket_service.get_calendario_mes(self.current_anio, self.current_mes, self.current_local)
         ventas_map = {v.fecha: v for v in self.venta_service.get_by_mes(self.current_anio, self.current_mes, self.current_local)}
         vales_map = {v.fecha: v for v in self.venta_service.vale_repo.get_by_mes(self.current_anio, self.current_mes, self.current_local)}
         pagos_map = {p.fecha: p for p in self.venta_service.pago_repo.get_by_mes(self.current_anio, self.current_mes, self.current_local)}

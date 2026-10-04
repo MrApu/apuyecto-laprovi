@@ -28,14 +28,14 @@ class VentaService:
         self.config_repo = config_repo or ConfiguracionRepository()
         self.audit_repo = audit_repo or AuditoriaRepository()
 
-    def get_by_fecha(self, fecha: str) -> Optional[VentaDiaria]:
-        return self.repo.get_by_fecha(fecha)
+    def get_by_fecha(self, fecha: str, local_id: str = "restaurante") -> Optional[VentaDiaria]:
+        return self.repo.get_by_fecha(fecha, local_id=local_id)
 
-    def get_by_mes(self, anio: int, mes: int) -> List[VentaDiaria]:
-        return self.repo.get_by_mes(anio, mes)
+    def get_by_mes(self, anio: int, mes: int, local_id: str = "restaurante") -> List[VentaDiaria]:
+        return self.repo.get_by_mes(anio, mes, local_id=local_id)
 
-    def get_resumen_mes(self, anio: int, mes: int) -> dict:
-        return self.repo.get_resumen_mes(anio, mes)
+    def get_resumen_mes(self, anio: int, mes: int, local_id: str = "restaurante") -> dict:
+        return self.repo.get_resumen_mes(anio, mes, local_id=local_id)
 
     def get_precio_historico_periodo(self, anio: int, mes: int) -> float:
         """Gets the fixed price for this month/year, never mutating historical periods."""

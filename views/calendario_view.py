@@ -63,6 +63,10 @@ class CalendarioView(QWidget):
         self.lbl_totales.setStyleSheet("font-size: 13px; font-weight: bold; color: #1F4E78; padding: 6px;")
         layout.addWidget(self.lbl_totales)
 
+    def set_local(self, local_id: str):
+        self.current_local = local_id
+        self.cargar_datos()
+
     def set_periodo(self, anio: int, mes: int):
         self.current_anio = anio
         self.current_mes = mes
@@ -70,7 +74,7 @@ class CalendarioView(QWidget):
         self.cargar_datos()
 
     def cargar_datos(self):
-        self.diarios = self.ticket_service.get_calendario_mes(self.current_anio, self.current_mes)
+        self.diarios = self.ticket_service.get_calendario_mes(self.current_anio, self.current_mes, getattr(self, "current_local", "restaurante"))
         self.table.setRowCount(len(self.diarios))
         self.spin_widgets = {}
 
