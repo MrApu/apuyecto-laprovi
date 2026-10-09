@@ -34,28 +34,32 @@ class VentaDiaria:
         if self.vales_canjeados is not None:
             self.vales_consumidos = self.vales_canjeados
         else:
-            self.vales_canjeados = self.vales_consumidos
+            self.vales_canjeados = self.vales_consumidos or 0
 
         if self.precio_policial_aplicado is not None:
             self.precio_ticket_aplicado = float(self.precio_policial_aplicado)
         else:
-            self.precio_policial_aplicado = self.precio_ticket_aplicado
+            self.precio_policial_aplicado = float(self.precio_ticket_aplicado or 12.0)
 
         if self.policias is not None and not self.cantidad_tickets:
             self.cantidad_tickets = self.policias
         else:
-            self.policias = self.cantidad_tickets or (self.para_unidad + self.local)
+            self.policias = self.cantidad_tickets or ((self.para_unidad or 0) + (self.local or 0))
 
         if self.venta_policial_calculada is not None and not self.venta_tickets:
             self.venta_tickets = float(self.venta_policial_calculada)
+        else:
+            self.venta_policial_calculada = float(self.venta_tickets or 0.0)
 
         if self.venta_sin_policias is not None and not self.venta_sin_tickets:
             self.venta_sin_tickets = float(self.venta_sin_policias)
+        else:
+            self.venta_sin_policias = float(self.venta_sin_tickets or 0.0)
 
         if self.menus_vendidos is not None:
-            self.menus_sin_policias = max(0, self.menus_vendidos - self.policias)
+            self.menus_sin_policias = max(0, self.menus_vendidos - (self.policias or 0))
         else:
-            self.menus_vendidos = self.policias
+            self.menus_vendidos = self.policias or 0
             self.menus_sin_policias = 0
 
     def recalcular(self, precio_ticket: Optional[float] = None, venta_incluye_tickets: Optional[int] = None):

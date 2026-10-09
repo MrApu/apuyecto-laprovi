@@ -73,44 +73,44 @@ class ConsistencyChecker:
             # Ventas checks
             vt = ventas.get(fecha)
             if vt:
-                # 2. Menús sin policías = Menús vendidos - Policías
-                if vt.menus_sin_policias != (vt.menus_vendidos - vt.policias):
-                    inconsistencias.append({
-                        "fecha": fecha,
-                        "tipo": "ERROR_MENUS_SIN_POLICIAS",
-                        "mensaje": f"Menús sin policías ({vt.menus_sin_policias}) != Menús vendidos ({vt.menus_vendidos}) - Policías ({vt.policias})"
-                    })
+                pol = vt.cantidad_tickets if vt.cantidad_tickets is not None else (vt.policias or 0)
+                precio = vt.precio_ticket_aplicado if vt.precio_ticket_aplicado is not None else (vt.precio_policial_aplicado or 12.0)
+                v_tickets = vt.venta_tickets if vt.venta_tickets is not None else (vt.venta_policial_calculada or 0.0)
+                v_sin_t = vt.venta_sin_tickets if vt.venta_sin_tickets is not None else (vt.venta_sin_policias or 0.0)
+                v_tot = vt.venta_total or 0.0
 
-                if vt.policias > vt.menus_vendidos and vt.menus_vendidos > 0:
-                    inconsistencias.append({
-                        "fecha": fecha,
-                        "tipo": "ADVERTENCIA_POLICIAS_SUPERAN_MENUS",
-                        "mensaje": f"Tickets policiales ({vt.policias}) superan menús vendidos ({vt.menus_vendidos})."
-                    })
-
-                # 3. Venta policial = Policías * Precio
-                venta_pol_esperada = round(vt.policias * vt.precio_policial_aplicado, 2)
-                if abs(vt.venta_policial_calculada - venta_pol_esperada) > 0.01:
+                # Venta tickets = Cantidad * Precio
+                venta_pol_esperada = round(pol * precio, 2)
+                if abs((v_tickets or 0.0) - venta_pol_esperada) > 0.01:
                     inconsistencias.append({
                         "fecha": fecha,
                         "tipo": "ERROR_VENTA_POLICIAL",
-                        "mensaje": f"Venta policial ({vt.venta_policial_calculada}) != Policías ({vt.policias}) * Precio ({vt.precio_policial_aplicado})"
+                        "mensaje": f"Venta policial ({v_tickets}) != Tickets ({pol}) * Precio ({precio})"
                     })
 
-                # 4. Venta sin policías = Venta total - Venta policial
-                venta_sin_pol_esperada = round(vt.venta_total - vt.venta_policial_calculada, 2)
-                if abs(vt.venta_sin_policias - venta_sin_pol_esperada) > 0.01:
-                    inconsistencias.append({
-                        "fecha": fecha,
-                        "tipo": "ERROR_VENTA_SIN_POLICIAS",
-                        "mensaje": f"Venta sin policías ({vt.venta_sin_policias}) != Venta total ({vt.venta_total}) - Venta policial ({vt.venta_policial_calculada})"
-                    })
+                # Venta sin tickets = Venta total - Venta tickets
+                if vt.venta_incluye_tickets == 1:
+                    expected_sin_t = round(max(0.0, v_tot - (v_tickets or 0.0)), 2)
+                    if abs((v_sin_t or 0.0) - expected_sin_t) > 0.01 and v_tot > 0:
+                        inconsistencias.append({
+                            "fecha": fecha,
+                            "tipo": "ERROR_VENTA_SIN_TICKETS",
+                            "mensaje": f"Venta sin tickets ({v_sin_t}) != Venta total ({v_tot}) - Tickets ({v_tickets})"
+                        })
+                else:
+                    expected_total = round((v_sin_t or 0.0) + (v_tickets or 0.0), 2)
+                    if abs(v_tot - expected_total) > 0.01 and v_tot > 0:
+                        inconsistencias.append({
+                            "fecha": fecha,
+                            "tipo": "ERROR_VENTA_TOTAL",
+                            "mensaje": f"Venta total ({v_tot}) != Venta sin tickets ({v_sin_t}) + Tickets ({v_tickets})"
+                        })
 
-                if vt.venta_sin_policias < 0:
+                if (v_sin_t or 0.0) < 0:
                     inconsistencias.append({
                         "fecha": fecha,
                         "tipo": "ADVERTENCIA_VENTA_SIN_POLICIAS_NEGATIVA",
-                        "mensaje": f"Venta sin policías negativa (S/ {vt.venta_sin_policias:.2f})."
+                        "mensaje": f"Venta sin policías negativa (S/ {v_sin_t:.2f})."
                     })
 
         return inconsistencias
