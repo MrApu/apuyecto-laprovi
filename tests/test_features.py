@@ -114,3 +114,34 @@ def test_export_pdf_and_excel(temp_db):
     ok_p = pdf_gen.generar_reporte_mensual_pdf(2026, 9, pdf_out)
     assert ok_p is True
     assert os.path.exists(pdf_out)
+
+def test_calendario_financiero_view_and_service(temp_db):
+    from services.financiero_service import FinancieroService
+    from repositories.venta_repository import VentaRepository
+    from repositories.compra_repository import CompraRepository
+    from repositories.gasto_repository import GastoRepository
+    from repositories.pago_personal_repository import PagoPersonalRepository
+    from repositories.ticket_repository import TicketRepository
+    from repositories.vale_repository import ValeRepository
+    from repositories.pago_repository import PagoRepository
+    
+    fin_service = FinancieroService(
+        venta_repo=VentaRepository(temp_db),
+        compra_repo=CompraRepository(temp_db),
+        gasto_repo=GastoRepository(temp_db),
+        pago_pers_repo=PagoPersonalRepository(temp_db),
+        ticket_repo=TicketRepository(temp_db),
+        vale_repo=ValeRepository(temp_db),
+        pago_repo=PagoRepository(temp_db)
+    )
+    res = fin_service.get_resumen_financiero_mes(2026, 9, "restaurante")
+    assert "total_ventas" in res
+    assert "total_egresos" in res
+    assert "saldo_neto" in res
+
+    dias = fin_service.get_calendario_financiero_mes(2026, 9, "restaurante")
+    assert len(dias) == 30  # Septiembre tiene 30 días
+    assert dias[0]["dia"] == 1
+    assert "saldo" in dias[0]
+
+

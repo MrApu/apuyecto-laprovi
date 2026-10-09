@@ -39,27 +39,28 @@ class CollapsibleCategory(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 2, 0, 4)
-        layout.setSpacing(1)
+        layout.setSpacing(2)
 
         # Header button
         self.btn_header = QPushButton()
         self.btn_header.setCheckable(False)
+        self.btn_header.setCursor(Qt.PointingHandCursor)
         self.btn_header.setStyleSheet("""
             QPushButton {
                 background-color: #111827;
-                color: #F9FAFB;
+                color: #F1F5F9;
                 text-align: left;
                 padding: 10px 14px;
-                font-size: 12px;
+                font-size: 11px;
                 font-weight: 800;
                 border: 1px solid #1F2937;
                 border-radius: 8px;
-                letter-spacing: 0.5px;
+                letter-spacing: 0.6px;
             }
             QPushButton:hover {
                 background-color: #1E293B;
-                border-color: #38BDF8;
-                color: #38BDF8;
+                border: 1px solid #6366F1;
+                color: #FFFFFF;
             }
         """)
 
@@ -73,7 +74,7 @@ class CollapsibleCategory(QWidget):
 
         if count_text:
             lbl_cnt = QLabel(count_text)
-            lbl_cnt.setStyleSheet("background: #1E293B; color: #94A3B8; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 8px;")
+            lbl_cnt.setStyleSheet("background: #1E293B; color: #38BDF8; font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 8px; border: 1px solid #334155;")
             header_layout.addWidget(lbl_cnt)
 
         self.lbl_arrow = QLabel("▾" if self.is_expanded else "▸")
@@ -86,20 +87,21 @@ class CollapsibleCategory(QWidget):
         # Container for sub-items
         self.content_widget = QWidget()
         self.content_layout = QVBoxLayout(self.content_widget)
-        self.content_layout.setContentsMargins(8, 2, 4, 4)
+        self.content_layout.setContentsMargins(6, 2, 2, 4)
         self.content_layout.setSpacing(2)
         layout.addWidget(self.content_widget)
 
         self.content_widget.setVisible(self.is_expanded)
 
     def add_subitem(self, btn: QPushButton):
+        btn.setCursor(Qt.PointingHandCursor)
         btn.setStyleSheet("""
             QPushButton {
                 background-color: transparent;
                 color: #94A3B8;
-                border: none;
+                border: 1px solid transparent;
                 text-align: left;
-                padding: 8px 14px;
+                padding: 8px 12px;
                 font-size: 12px;
                 font-weight: 600;
                 border-radius: 6px;
@@ -107,11 +109,14 @@ class CollapsibleCategory(QWidget):
             }
             QPushButton:hover {
                 background-color: #1E293B;
-                color: #F8FAFC;
+                border: 1px solid #334155;
+                border-left: 3px solid #38BDF8;
+                color: #FFFFFF;
             }
             QPushButton:checked {
                 background-color: #1E1B4B;
-                color: #A5B4FC;
+                color: #C7D2FE;
+                border: 1px solid #3730A3;
                 border-left: 3px solid #6366F1;
                 font-weight: 700;
             }
