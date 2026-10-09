@@ -31,6 +31,11 @@ class EgresosView(QWidget):
         self.lbl_local_badge.setText(f"Local: {LOCAL_NAMES.get(local_id, local_id.upper())}")
         self.refresh_data()
 
+    def set_periodo(self, anio: int, mes: int):
+        self.current_year = anio
+        self.current_month = mes
+        self.refresh_data()
+
     def _init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(15, 15, 15, 15)
