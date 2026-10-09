@@ -203,7 +203,7 @@ class PagosView(QWidget):
 
     def cargar_datos(self):
         diarios = self.ticket_service.get_calendario_mes(self.current_anio, self.current_mes, self.current_local)
-        pagos_existentes = {p.fecha: p for p in self.pago_service.get_by_mes(self.current_anio, self.current_mes, self.current_local)}
+        pagos_existentes = {p.fecha: p for p in self.pago_service.get_by_mes(self.current_anio, self.current_mes)}
 
         self.table.setRowCount(len(diarios))
         self.widgets = {}
@@ -422,8 +422,7 @@ class PagosView(QWidget):
                 tickets_debidos=deb,
                 monto_pagado=m_pag,
                 monto_pendiente=m_pend,
-                observacion=obs,
-                local_id=self.current_local
+                observacion=obs
             )
             if not p.is_cuadrado:
                 descuadrados += 1

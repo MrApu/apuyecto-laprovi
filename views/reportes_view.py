@@ -61,6 +61,10 @@ class ReportesView(QWidget):
         self.table_preview.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
         layout.addWidget(self.table_preview)
 
+    def set_local(self, local_id: str):
+        self.current_local = local_id
+        self.cargar_datos()
+
     def set_periodo(self, anio: int, mes: int):
         self.current_anio = anio
         self.current_mes = mes
@@ -68,7 +72,8 @@ class ReportesView(QWidget):
         self.cargar_datos()
 
     def cargar_datos(self):
-        data = self.dashboard_service.get_dashboard_data(self.current_anio, self.current_mes)
+        local = getattr(self, "current_local", "restaurante")
+        data = self.dashboard_service.get_dashboard_data(self.current_anio, self.current_mes, local)
         kpis = data.get("kpis", {})
         m = self.mes_service.get_by_anio_mes(self.current_anio, self.current_mes)
         precio_menu = m.precio_menu_policial if m else 15.0

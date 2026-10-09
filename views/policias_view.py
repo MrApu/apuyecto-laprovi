@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QButtonGroup, QFrame
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QFont
 from typing import Optional, List
 from models.policia import Policia
 from services.policia_service import PoliciaService
