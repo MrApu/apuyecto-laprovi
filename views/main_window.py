@@ -1,4 +1,5 @@
 import os
+from typing import Optional, List, Dict, Any
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget,
     QPushButton, QLabel, QComboBox, QSpinBox, QFileDialog, QMessageBox,
@@ -216,7 +217,7 @@ class MainWindow(QMainWindow):
             self.mes_service.crear_mes(2026, 8, 12.0)
             self.mes_service.crear_mes(2026, 7, 12.0)
 
-    def _on_local_changed(self):
+    def _on_local_changed(self, index: Optional[int] = None):
         self.current_local = self.cmb_local.currentData() or LOCAL_RESTAURANTE
         self._broadcast_local()
 

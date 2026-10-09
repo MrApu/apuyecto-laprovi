@@ -1,29 +1,38 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QFrame,
-    QScrollArea, QPushButton, QSizePolicy
+    QScrollArea, QPushButton, QTabWidget, QTabBar, QSizePolicy
 )
 from PySide6.QtCore import Qt
-from typing import Optional
+from typing import Optional, Dict, Any
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import numpy as np
 
 from services.dashboard_service import DashboardService
-from models.local import LOCAL_RESTAURANTE, LOCAL_NAMES
+from models.local import LOCAL_RESTAURANTE, LOCAL_FAST_FOOD, LOCAL_CONSOLIDADO, LOCAL_NAMES
 
 class DashboardView(QWidget):
+    """
+    Dashboard Modular BI inspirado en Tremor.so / Tailwind Admin:
+    - Paleta Slate Oscura & Neón Suave (#090D16, #111827, #1F2937)
+    - Tarjetas KPI modulares con Badges e Indicadores de Rendimiento
+    - Pestañas Segmentadas para Análisis Profundo por Módulo
+    - Gráficos Panorámicos en Alta Resolución (HD) con Degradados Suaves
+    """
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.dashboard_service = DashboardService()
         self.current_local = LOCAL_RESTAURANTE
         self.current_anio = 2026
         self.current_mes = 9
+        self.cached_data = {}
         self._init_ui()
 
     def set_local(self, local_id: str):
         self.current_local = local_id
-        self.lbl_local.setText(f"Local: {LOCAL_NAMES.get(local_id, local_id.upper())}")
+        self.lbl_local.setText(f"📍 Sede: {LOCAL_NAMES.get(local_id, local_id.upper())}")
         self.cargar_datos()
 
     def set_periodo(self, anio: int, mes: int):
@@ -33,299 +42,603 @@ class DashboardView(QWidget):
 
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(14, 14, 14, 14)
-        main_layout.setSpacing(12)
+        main_layout.setContentsMargins(16, 16, 16, 16)
+        main_layout.setSpacing(14)
+        self.setStyleSheet("background-color: #090D16; font-family: 'Segoe UI', Arial, sans-serif;")
 
-        # Title Bar
+        # Header Bar
         header_box = QHBoxLayout()
-        self.lbl_title = QLabel("📊 DASHBOARD Y ANÁLISIS DE GESTIÓN INTEGRAL")
-        self.lbl_title.setStyleSheet("font-size: 19px; font-weight: bold; color: #1F4E78;")
+        self.lbl_title = QLabel("📊 DASHBOARD MODULAR BI — LA PROVINCIAL")
+        self.lbl_title.setStyleSheet("font-size: 20px; font-weight: 800; color: #F9FAFB; letter-spacing: 0.5px;")
         header_box.addWidget(self.lbl_title)
 
-        self.lbl_local = QLabel(f"Local: {LOCAL_NAMES.get(self.current_local, 'RESTAURANTE')}")
-        self.lbl_local.setStyleSheet("background: #1e293b; color: #38bdf8; padding: 6px 14px; border-radius: 6px; font-weight: bold; font-size: 13px;")
+        self.lbl_local = QLabel(f"📍 Sede: {LOCAL_NAMES.get(self.current_local, 'RESTAURANTE')}")
+        self.lbl_local.setStyleSheet("""
+            background: #1E293B;
+            color: #38BDF8;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 13px;
+            border: 1px solid #334155;
+        """)
         header_box.addWidget(self.lbl_local)
 
         header_box.addStretch()
 
-        self.btn_refresh = QPushButton("🔄 Actualizar Datos")
-        self.btn_refresh.setProperty("class", "PrimaryBtn")
-        self.btn_refresh.setStyleSheet("font-size: 13px; padding: 6px 16px;")
+        self.btn_refresh = QPushButton("🔄 Actualizar Métricas")
+        self.btn_refresh.setStyleSheet("""
+            QPushButton {
+                background-color: #6366F1;
+                color: #FFFFFF;
+                font-weight: 700;
+                font-size: 13px;
+                padding: 7px 18px;
+                border-radius: 8px;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: #4F46E5;
+            }
+            QPushButton:pressed {
+                background-color: #4338CA;
+            }
+        """)
         self.btn_refresh.clicked.connect(self.cargar_datos)
         header_box.addWidget(self.btn_refresh)
         main_layout.addLayout(header_box)
 
-        # Scroll Area for high-resolution analysis
+        # Tab Widget (Segmented Controls Tremor Style)
+        self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #1F2937;
+                background: #090D16;
+                border-radius: 10px;
+                padding: 10px;
+            }
+            QTabBar::tab {
+                background: #111827;
+                color: #9CA3AF;
+                font-weight: 700;
+                font-size: 13px;
+                padding: 10px 22px;
+                margin-right: 6px;
+                border-radius: 8px;
+                border: 1px solid #1F2937;
+            }
+            QTabBar::tab:hover {
+                background: #1F2937;
+                color: #F9FAFB;
+            }
+            QTabBar::tab:selected {
+                background: #6366F1;
+                color: #FFFFFF;
+                border: 1px solid #818CF8;
+            }
+        """)
+
+        # Tab 1: Resumen Ejecutivo
+        self.tab_ejecutivo = self._build_tab_ejecutivo()
+        self.tabs.addTab(self.tab_ejecutivo, "⚡ Resumen Ejecutivo")
+
+        # Tab 2: Finanzas & Medios de Pago
+        self.tab_finanzas = self._build_tab_finanzas()
+        self.tabs.addTab(self.tab_finanzas, "💰 Finanzas & Ingresos")
+
+        # Tab 3: Egresos & Compras
+        self.tab_egresos = self._build_tab_egresos()
+        self.tabs.addTab(self.tab_egresos, "📉 Egresos & Compras")
+
+        # Tab 4: Operaciones Policiales & Cobranzas
+        self.tab_policial = self._build_tab_policial()
+        self.tabs.addTab(self.tab_policial, "👮 Gestión Policial & Cobranzas")
+
+        # Tab 5: Vales Policiales
+        self.tab_vales = self._build_tab_vales()
+        self.tabs.addTab(self.tab_vales, "🎫 Vales & Canjes")
+
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+        main_layout.addWidget(self.tabs)
+
+    # -------------------------------------------------------------
+    # TAB 1: RESUMEN EJECUTIVO
+    # -------------------------------------------------------------
+    def _build_tab_ejecutivo(self) -> QWidget:
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
-        
-        content_widget = QWidget()
-        self.content_layout = QVBoxLayout(content_widget)
-        self.content_layout.setContentsMargins(4, 4, 4, 14)
-        self.content_layout.setSpacing(18)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(16)
 
-        # KPI Grid
-        self.kpi_grid = QGridLayout()
-        self.kpi_grid.setSpacing(10)
-        self._setup_kpi_cards()
-        self.content_layout.addLayout(self.kpi_grid)
+        # 4 Hero KPI Cards
+        kpi_row = QHBoxLayout()
+        kpi_row.setSpacing(12)
 
-        # Charts Area (Expanded & High Definition)
-        self._setup_charts_area()
-
-        scroll.setWidget(content_widget)
-        main_layout.addWidget(scroll)
-
-    def _setup_kpi_cards(self):
-        self.cards = {}
-        kpi_defs = [
-            ("venta_total", "VENTA TOTAL DEL MES", "S/ 0.00", "#10b981", "16px"),
-            ("total_egresos", "TOTAL EGRESOS ACUMULADOS", "S/ 0.00", "#ef4444", "16px"),
-            ("saldo_neto", "SALDO NETO (UTILIDAD)", "S/ 0.00", "#0284c7", "16px"),
-            ("rentabilidad", "RENTABILIDAD SOBRE VENTAS", "0.0%", "#f59e0b", "16px"),
-            ("total_compras", "COMPRAS / INSUMOS", "S/ 0.00", "#3b82f6", "14px"),
-            ("total_gastos", "GASTOS OPERATIVOS", "S/ 0.00", "#d97706", "14px"),
-            ("total_personal", "PAGOS AL PERSONAL", "S/ 0.00", "#8b5cf6", "14px"),
-            ("venta_sin_tickets", "VENTA SIN TICKETS (EF+YP)", "S/ 0.00", "#059669", "14px"),
-            ("total_policias", "CANTIDAD TICKETS POLICIALES", "0", "#1565C0", "14px"),
-            ("venta_policial", "VALOR TICKETS POLICIALES", "S/ 0.00", "#2E7D32", "14px"),
-            ("tickets_unidad", "TICKETS PARA UNIDAD", "0", "#475569", "14px"),
-            ("tickets_local", "TICKETS DENTRO LOCAL", "0", "#475569", "14px"),
-            ("vales_entregados", "VALES ENTREGADOS", "0", "#E65100", "14px"),
-            ("vales_canjeados", "VALES CANJEADOS", "0", "#EF6C00", "14px"),
-            ("saldo_vales", "SALDO VALES EN CIRCULACIÓN", "0", "#F57F17", "14px"),
-            ("monto_pendiente", "DEUDA PENDIENTE COBRO", "S/ 0.00", "#dc2626", "14px"),
+        self.kpi_ejecutivo = {}
+        cards_data = [
+            ("venta_total", "VENTA TOTAL DEL MES", "S/ 0.00", "Ingresos Totales", "#10B981", "#064E3B"),
+            ("total_egresos", "TOTAL EGRESOS ACUMULADOS", "S/ 0.00", "Compras+Gastos+Personal", "#F43F5E", "#881337"),
+            ("saldo_neto", "UTILIDAD NETA DISPONIBLE", "S/ 0.00", "Saldo Final Neto", "#38BDF8", "#0C4A6E"),
+            ("rentabilidad", "MARGEN DE RENTABILIDAD", "0.0%", "Sobre Venta Total", "#F59E0B", "#78350F"),
         ]
 
-        row, col = 0, 0
-        for key, title, default_val, color, font_sz in kpi_defs:
-            card = QFrame()
-            card.setStyleSheet(f"""
-                QFrame {{
-                    background-color: #0f172a;
-                    border: 1px solid #1e293b;
-                    border-left: 5px solid {color};
-                    border-radius: 8px;
-                    padding: 4px;
-                }}
-            """)
-            card_l = QVBoxLayout(card)
-            card_l.setContentsMargins(10, 8, 10, 8)
-            card_l.setSpacing(3)
+        for key, title, val_def, badge_text, color_accent, color_bg in cards_data:
+            card = self._create_tremor_card(key, title, val_def, badge_text, color_accent, color_bg)
+            kpi_row.addWidget(card)
+            self.kpi_ejecutivo[key] = card.findChild(QLabel, f"val_{key}")
 
-            lbl_t = QLabel(title)
-            lbl_t.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;")
-            lbl_v = QLabel(default_val)
-            lbl_v.setStyleSheet(f"color: {color}; font-size: {font_sz}; font-weight: bold;")
+        layout.addLayout(kpi_row)
 
-            card_l.addWidget(lbl_t)
-            card_l.addWidget(lbl_v)
+        # Main Wide Chart: Flujo de Caja Integral
+        self.fig_ejecutivo, self.ax_ejecutivo = plt.subplots(figsize=(12, 4.2), dpi=100)
+        self.fig_ejecutivo.subplots_adjust(left=0.06, right=0.96, top=0.88, bottom=0.15)
+        self.canvas_ejecutivo = FigureCanvas(self.fig_ejecutivo)
+        self.canvas_ejecutivo.setMinimumHeight(380)
+        layout.addWidget(self._wrap_chart_frame("📈 Tendencia Diaria: Ventas Totales vs Egresos y Saldo Neto", self.canvas_ejecutivo))
 
-            self.cards[key] = lbl_v
-            self.kpi_grid.addWidget(card, row, col)
+        # 2 Donut Charts: Revenue Structure & Expense Breakdown
+        donuts_layout = QHBoxLayout()
+        donuts_layout.setSpacing(14)
 
-            col += 1
-            if col >= 4:
-                col = 0
-                row += 1
+        self.fig_donut_rev, self.ax_donut_rev = plt.subplots(figsize=(5.5, 3.4), dpi=100)
+        self.canvas_donut_rev = FigureCanvas(self.fig_donut_rev)
+        self.canvas_donut_rev.setMinimumHeight(300)
+        donuts_layout.addWidget(self._wrap_chart_frame("💵 Estructura de Ingresos (Efectivo vs Yape vs Tickets)", self.canvas_donut_rev))
 
-    def _setup_charts_area(self):
-        # 1. Main Large Chart: Balance Financiero Completo (Venta Total, Sin Tickets, Egresos y Saldo)
-        self.fig_fin, self.ax_fin = plt.subplots(figsize=(12, 4.2), dpi=100)
-        self.fig_fin.subplots_adjust(left=0.06, right=0.96, top=0.90, bottom=0.15)
-        self.canvas_fin = FigureCanvas(self.fig_fin)
-        self.canvas_fin.setMinimumHeight(380)
-        self.content_layout.addWidget(
-            self._wrap_chart("📈 1. EVOLUCIÓN FINANCIERA DIARIA (Venta Total, Venta Sin Tickets, Egresos y Saldo Neto)", self.canvas_fin)
-        )
+        self.fig_donut_egr, self.ax_donut_egr = plt.subplots(figsize=(5.5, 3.4), dpi=100)
+        self.canvas_donut_egr = FigureCanvas(self.fig_donut_egr)
+        self.canvas_donut_egr.setMinimumHeight(300)
+        donuts_layout.addWidget(self._wrap_chart_frame("📉 Distribución de Egresos (Compras vs Gastos vs Personal)", self.canvas_donut_egr))
 
-        # 2-Column Grid for Detailed Breakdown Charts
-        grid_charts = QGridLayout()
-        grid_charts.setSpacing(16)
+        layout.addLayout(donuts_layout)
 
-        # Chart 2: Composición de Ingresos Diarios (Efectivo vs Yape vs Tickets)
-        self.fig_ing, self.ax_ing = plt.subplots(figsize=(6.2, 3.8), dpi=100)
-        self.fig_ing.subplots_adjust(left=0.10, right=0.95, top=0.88, bottom=0.15)
-        self.canvas_ing = FigureCanvas(self.fig_ing)
-        self.canvas_ing.setMinimumHeight(340)
-        grid_charts.addWidget(
-            self._wrap_chart("💵 2. ESTRUCTURA DE INGRESOS (Efectivo, Yape y Tickets Policiales)", self.canvas_ing), 0, 0
-        )
+        scroll.setWidget(content)
+        return scroll
 
-        # Chart 3: Desglose de Egresos por Categoría (Compras, Gastos, Personal)
-        self.fig_egr, self.ax_egr = plt.subplots(figsize=(6.2, 3.8), dpi=100)
-        self.fig_egr.subplots_adjust(left=0.10, right=0.95, top=0.88, bottom=0.15)
-        self.canvas_egr = FigureCanvas(self.fig_egr)
-        self.canvas_egr.setMinimumHeight(340)
-        grid_charts.addWidget(
-            self._wrap_chart("📉 3. DESGLOSE DE EGRESOS (Compras de Insumos, Gastos y Pagos Personal)", self.canvas_egr), 0, 1
-        )
+    # -------------------------------------------------------------
+    # TAB 2: FINANZAS & MEDIOS DE PAGO
+    # -------------------------------------------------------------
+    def _build_tab_finanzas(self) -> QWidget:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(16)
 
-        # Chart 4: Demanda y Distribución Policial (Unidad vs Local)
-        self.fig_pol, self.ax_pol = plt.subplots(figsize=(6.2, 3.8), dpi=100)
-        self.fig_pol.subplots_adjust(left=0.10, right=0.95, top=0.88, bottom=0.15)
-        self.canvas_pol = FigureCanvas(self.fig_pol)
-        self.canvas_pol.setMinimumHeight(340)
-        grid_charts.addWidget(
-            self._wrap_chart("👮 4. CONTROL DE TICKETS POLICIALES (Para Unidad vs Dentro del Local)", self.canvas_pol), 1, 0
-        )
+        # Sub-KPIs Finanzas
+        kpi_row = QHBoxLayout()
+        self.kpi_finanzas = {}
+        cards = [
+            ("efectivo", "VENTA EFECTIVO", "S/ 0.00", "Flujo de Caja", "#10B981", "#064E3B"),
+            ("yape", "VENTA YAPE / DIGITAL", "S/ 0.00", "Billeteras", "#A855F7", "#581C87"),
+            ("venta_sin_tickets", "VENTA SIN TICKETS", "S/ 0.00", "Efectivo + Yape", "#06B6D4", "#164E63"),
+            ("venta_policial", "VENTA TICKETS POLICIALES", "S/ 0.00", "S/ 12.00 c/u", "#6366F1", "#312E81"),
+        ]
+        for key, title, val_def, badge, color, color_bg in cards:
+            c = self._create_tremor_card(key, title, val_def, badge, color, color_bg)
+            kpi_row.addWidget(c)
+            self.kpi_finanzas[key] = c.findChild(QLabel, f"val_{key}")
+        layout.addLayout(kpi_row)
 
-        # Chart 5: Control de Cobranzas y Vales (Pagados vs Debidos & Vales)
-        self.fig_val, self.ax_val = plt.subplots(figsize=(6.2, 3.8), dpi=100)
-        self.fig_val.subplots_adjust(left=0.10, right=0.95, top=0.88, bottom=0.15)
-        self.canvas_val = FigureCanvas(self.fig_val)
-        self.canvas_val.setMinimumHeight(340)
-        grid_charts.addWidget(
-            self._wrap_chart("🎫 5. ESTADO DE COBRANZAS (Pagados vs Debidos) Y FLUJO DE VALES", self.canvas_val), 1, 1
-        )
+        # Chart: Daily Breakdown of Payment Methods (Stacked Bars)
+        self.fig_fin_stack, self.ax_fin_stack = plt.subplots(figsize=(12, 4.4), dpi=100)
+        self.fig_fin_stack.subplots_adjust(left=0.06, right=0.96, top=0.88, bottom=0.15)
+        self.canvas_fin_stack = FigureCanvas(self.fig_fin_stack)
+        self.canvas_fin_stack.setMinimumHeight(400)
+        layout.addWidget(self._wrap_chart_frame("💳 Composición Diaria de Ingresos: Efectivo, Yape y Tickets Policiales", self.canvas_fin_stack))
 
-        self.content_layout.addLayout(grid_charts)
+        scroll.setWidget(content)
+        return scroll
 
-    def _wrap_chart(self, title_text: str, canvas: FigureCanvas) -> QFrame:
+    # -------------------------------------------------------------
+    # TAB 3: EGRESOS & COMPRAS
+    # -------------------------------------------------------------
+    def _build_tab_egresos(self) -> QWidget:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(16)
+
+        kpi_row = QHBoxLayout()
+        self.kpi_egresos = {}
+        cards = [
+            ("total_compras", "COMPRAS / INSUMOS", "S/ 0.00", "Materia Prima", "#F97316", "#7C2D12"),
+            ("total_gastos", "GASTOS OPERATIVOS", "S/ 0.00", "Servicios & Varios", "#F59E0B", "#78350F"),
+            ("total_personal", "PAGOS AL PERSONAL", "S/ 0.00", "Planilla & Turnos", "#EC4899", "#831843"),
+            ("total_egresos_tab3", "TOTAL EGRESOS DEL MES", "S/ 0.00", "Salidas Totales", "#F43F5E", "#881337"),
+        ]
+        for key, title, val_def, badge, color, color_bg in cards:
+            c = self._create_tremor_card(key, title, val_def, badge, color, color_bg)
+            kpi_row.addWidget(c)
+            self.kpi_egresos[key] = c.findChild(QLabel, f"val_{key}")
+        layout.addLayout(kpi_row)
+
+        # Chart: Daily Stacked Expenses
+        self.fig_egr_daily, self.ax_egr_daily = plt.subplots(figsize=(12, 4.4), dpi=100)
+        self.fig_egr_daily.subplots_adjust(left=0.06, right=0.96, top=0.88, bottom=0.15)
+        self.canvas_egr_daily = FigureCanvas(self.fig_egr_daily)
+        self.canvas_egr_daily.setMinimumHeight(400)
+        layout.addWidget(self._wrap_chart_frame("📉 Desglose Diario de Egresos: Compras vs Gastos vs Personal", self.canvas_egr_daily))
+
+        scroll.setWidget(content)
+        return scroll
+
+    # -------------------------------------------------------------
+    # TAB 4: GESTIÓN POLICIAL & COBRANZAS
+    # -------------------------------------------------------------
+    def _build_tab_policial(self) -> QWidget:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(16)
+
+        kpi_row = QHBoxLayout()
+        self.kpi_policial = {}
+        cards = [
+            ("total_policias", "TOTAL TICKETS DEL MES", "0", "Consumo Policial", "#38BDF8", "#0C4A6E"),
+            ("tickets_unidad", "PARA UNIDAD PNP", "0", "Llevados a base", "#6366F1", "#312E81"),
+            ("tickets_local", "CONSUMO EN LOCAL", "0", "En restaurante", "#06B6D4", "#164E63"),
+            ("monto_pendiente", "DEUDA POLICIAL PENDIENTE", "S/ 0.00", "Por Cobrar", "#F43F5E", "#881337"),
+        ]
+        for key, title, val_def, badge, color, color_bg in cards:
+            c = self._create_tremor_card(key, title, val_def, badge, color, color_bg)
+            kpi_row.addWidget(c)
+            self.kpi_policial[key] = c.findChild(QLabel, f"val_{key}")
+        layout.addLayout(kpi_row)
+
+        # Chart 1: Unidad vs Local
+        self.fig_pol_stack, self.ax_pol_stack = plt.subplots(figsize=(12, 4.0), dpi=100)
+        self.fig_pol_stack.subplots_adjust(left=0.06, right=0.96, top=0.88, bottom=0.15)
+        self.canvas_pol_stack = FigureCanvas(self.fig_pol_stack)
+        self.canvas_pol_stack.setMinimumHeight(360)
+        layout.addWidget(self._wrap_chart_frame("👮 Demanda Policial Diaria: Tickets Para Unidad vs Dentro del Local", self.canvas_pol_stack))
+
+        # Chart 2: Pagados vs Debidos
+        self.fig_pol_pagos, self.ax_pol_pagos = plt.subplots(figsize=(12, 4.0), dpi=100)
+        self.fig_pol_pagos.subplots_adjust(left=0.06, right=0.96, top=0.88, bottom=0.15)
+        self.canvas_pol_pagos = FigureCanvas(self.fig_pol_pagos)
+        self.canvas_pol_pagos.setMinimumHeight(360)
+        layout.addWidget(self._wrap_chart_frame("⚖️ Estado de Cobranza Policial: Tickets Pagados vs Tickets Debidos", self.canvas_pol_pagos))
+
+        scroll.setWidget(content)
+        return scroll
+
+    # -------------------------------------------------------------
+    # TAB 5: VALES & CANJES
+    # -------------------------------------------------------------
+    def _build_tab_vales(self) -> QWidget:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(16)
+
+        kpi_row = QHBoxLayout()
+        self.kpi_vales = {}
+        cards = [
+            ("vales_entregados", "VALES ENTREGADOS", "0", "Emitidos", "#F59E0B", "#78350F"),
+            ("vales_canjeados", "VALES CANJEADOS", "0", "Consumidos", "#10B981", "#064E3B"),
+            ("saldo_vales", "SALDO EN CIRCULACIÓN", "0", "Pendientes", "#EAB308", "#713F12"),
+            ("tickets_debidos", "TICKETS DEBIDOS", "0", "Por Cancelar", "#F43F5E", "#881337"),
+        ]
+        for key, title, val_def, badge, color, color_bg in cards:
+            c = self._create_tremor_card(key, title, val_def, badge, color, color_bg)
+            kpi_row.addWidget(c)
+            self.kpi_vales[key] = c.findChild(QLabel, f"val_{key}")
+        layout.addLayout(kpi_row)
+
+        self.fig_val_flow, self.ax_val_flow = plt.subplots(figsize=(12, 4.4), dpi=100)
+        self.fig_val_flow.subplots_adjust(left=0.06, right=0.96, top=0.88, bottom=0.15)
+        self.canvas_val_flow = FigureCanvas(self.fig_val_flow)
+        self.canvas_val_flow.setMinimumHeight(400)
+        layout.addWidget(self._wrap_chart_frame("🎫 Flujo Diario de Vales Policiales: Entregados vs Canjeados", self.canvas_val_flow))
+
+        scroll.setWidget(content)
+        return scroll
+
+    # -------------------------------------------------------------
+    # HELPER COMPONENTS (TREMOR STYLE)
+    # -------------------------------------------------------------
+    def _create_tremor_card(self, key: str, title: str, val_def: str, badge: str, color: str, color_bg: str) -> QFrame:
+        card = QFrame()
+        card.setStyleSheet(f"""
+            QFrame {{
+                background-color: #111827;
+                border: 1px solid #1F2937;
+                border-radius: 10px;
+                padding: 12px;
+            }}
+            QFrame:hover {{
+                border: 1px solid {color};
+            }}
+        """)
+        l = QVBoxLayout(card)
+        l.setContentsMargins(10, 8, 10, 8)
+        l.setSpacing(6)
+
+        # Header row with title & badge
+        top_row = QHBoxLayout()
+        lbl_t = QLabel(title)
+        lbl_t.setStyleSheet("color: #9CA3AF; font-size: 11px; font-weight: 700; letter-spacing: 0.5px;")
+        top_row.addWidget(lbl_t)
+        top_row.addStretch()
+
+        lbl_badge = QLabel(badge)
+        lbl_badge.setStyleSheet(f"""
+            background-color: {color_bg};
+            color: {color};
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 12px;
+        """)
+        top_row.addWidget(lbl_badge)
+        l.addLayout(top_row)
+
+        # Value
+        lbl_v = QLabel(val_def)
+        lbl_v.setObjectName(f"val_{key}")
+        lbl_v.setStyleSheet(f"color: #F9FAFB; font-size: 22px; font-weight: 800; padding: 2px 0;")
+        l.addWidget(lbl_v)
+
+        # Accent Bottom Bar
+        bar = QFrame()
+        bar.setFixedHeight(3)
+        bar.setStyleSheet(f"background-color: {color}; border-radius: 2px;")
+        l.addWidget(bar)
+
+        return card
+
+    def _wrap_chart_frame(self, title: str, canvas: FigureCanvas) -> QFrame:
         frame = QFrame()
         frame.setStyleSheet("""
             QFrame {
-                background-color: #0f172a;
-                border: 1px solid #1e293b;
-                border-radius: 8px;
-                padding: 10px;
+                background-color: #111827;
+                border: 1px solid #1F2937;
+                border-radius: 10px;
+                padding: 12px;
             }
         """)
         l = QVBoxLayout(frame)
         l.setContentsMargins(8, 8, 8, 8)
-        l.setSpacing(8)
+        l.setSpacing(10)
 
-        lbl = QLabel(title_text)
-        lbl.setStyleSheet("font-size: 13px; font-weight: bold; color: #38bdf8;")
+        lbl = QLabel(title)
+        lbl.setStyleSheet("font-size: 14px; font-weight: 700; color: #F9FAFB; padding-left: 4px;")
         l.addWidget(lbl)
         l.addWidget(canvas)
         return frame
 
+    def _on_tab_changed(self, index: int):
+        if self.cached_data:
+            self._render_current_tab()
+
+    # -------------------------------------------------------------
+    # DATA LOADING & DRAWING
+    # -------------------------------------------------------------
     def cargar_datos(self):
-        data = self.dashboard_service.get_dashboard_data(self.current_anio, self.current_mes, self.current_local)
-        k = data.get("kpis", {})
+        self.cached_data = self.dashboard_service.get_dashboard_data(self.current_anio, self.current_mes, self.current_local)
+        k = self.cached_data.get("kpis", {})
 
-        self.cards["venta_total"].setText(f"S/ {k.get('venta_total', 0.0):,.2f}")
-        self.cards["total_egresos"].setText(f"S/ {k.get('total_egresos', 0.0):,.2f}")
+        # Update KPI labels across all tabs
+        self._update_label(self.kpi_ejecutivo, "venta_total", f"S/ {k.get('venta_total', 0.0):,.2f}")
+        self._update_label(self.kpi_ejecutivo, "total_egresos", f"S/ {k.get('total_egresos', 0.0):,.2f}")
+        saldo = k.get("saldo_neto", 0.0)
+        self._update_label(self.kpi_ejecutivo, "saldo_neto", f"S/ {saldo:,.2f}", color="#10B981" if saldo >= 0 else "#F43F5E")
+        self._update_label(self.kpi_ejecutivo, "rentabilidad", f"{k.get('rentabilidad_pct', 0.0):.1f}%")
 
-        saldo = k.get('saldo_neto', 0.0)
-        color_saldo = "#10b981" if saldo >= 0 else "#ef4444"
-        self.cards["saldo_neto"].setText(f"S/ {saldo:,.2f}")
-        self.cards["saldo_neto"].setStyleSheet(f"color: {color_saldo}; font-size: 16px; font-weight: bold;")
-        self.cards["rentabilidad"].setText(f"{k.get('rentabilidad_pct', 0.0):.1f}%")
+        self._update_label(self.kpi_finanzas, "efectivo", f"S/ {k.get('efectivo', 0.0):,.2f}")
+        self._update_label(self.kpi_finanzas, "yape", f"S/ {k.get('yape', 0.0):,.2f}")
+        self._update_label(self.kpi_finanzas, "venta_sin_tickets", f"S/ {k.get('venta_sin_tickets', 0.0):,.2f}")
+        self._update_label(self.kpi_finanzas, "venta_policial", f"S/ {k.get('venta_policial_calculada', 0.0):,.2f}")
 
-        self.cards["total_compras"].setText(f"S/ {k.get('total_compras', 0.0):,.2f}")
-        self.cards["total_gastos"].setText(f"S/ {k.get('total_gastos', 0.0):,.2f}")
-        self.cards["total_personal"].setText(f"S/ {k.get('total_personal', 0.0):,.2f}")
+        self._update_label(self.kpi_egresos, "total_compras", f"S/ {k.get('total_compras', 0.0):,.2f}")
+        self._update_label(self.kpi_egresos, "total_gastos", f"S/ {k.get('total_gastos', 0.0):,.2f}")
+        self._update_label(self.kpi_egresos, "total_personal", f"S/ {k.get('total_personal', 0.0):,.2f}")
+        self._update_label(self.kpi_egresos, "total_egresos_tab3", f"S/ {k.get('total_egresos', 0.0):,.2f}")
 
-        self.cards["venta_sin_tickets"].setText(f"S/ {k.get('venta_sin_tickets', 0.0):,.2f}")
-        self.cards["total_policias"].setText(str(k.get("total_tickets_policiales", 0)))
-        self.cards["venta_policial"].setText(f"S/ {k.get('venta_policial_calculada', 0.0):,.2f}")
-        self.cards["tickets_unidad"].setText(str(k.get("tickets_para_unidad", 0)))
-        self.cards["tickets_local"].setText(str(k.get("tickets_local", 0)))
+        self._update_label(self.kpi_policial, "total_policias", f"{k.get('total_tickets_policiales', 0):,d}")
+        self._update_label(self.kpi_policial, "tickets_unidad", f"{k.get('tickets_para_unidad', 0):,d}")
+        self._update_label(self.kpi_policial, "tickets_local", f"{k.get('tickets_local', 0):,d}")
+        self._update_label(self.kpi_policial, "monto_pendiente", f"S/ {k.get('monto_pendiente', 0.0):,.2f}")
 
-        self.cards["vales_entregados"].setText(str(k.get("vales_entregados", 0)))
-        self.cards["vales_canjeados"].setText(str(k.get("vales_canjeados", 0)))
-        self.cards["saldo_vales"].setText(str(k.get("saldo_vales", 0)))
-        self.cards["monto_pendiente"].setText(f"S/ {k.get('monto_pendiente', 0.0):,.2f}")
+        self._update_label(self.kpi_vales, "vales_entregados", f"{k.get('vales_entregados', 0):,d}")
+        self._update_label(self.kpi_vales, "vales_canjeados", f"{k.get('vales_canjeados', 0):,d}")
+        self._update_label(self.kpi_vales, "saldo_vales", f"{k.get('saldo_vales', 0):,d}")
+        self._update_label(self.kpi_vales, "tickets_debidos", f"{k.get('tickets_debidos', 0):,d}")
 
-        self._draw_charts(data.get("series", {}))
+        self._render_current_tab()
 
-    def _draw_charts(self, s: dict):
+    def _update_label(self, card_dict: dict, key: str, text: str, color: Optional[str] = None):
+        lbl = card_dict.get(key)
+        if lbl:
+            lbl.setText(text)
+            if color:
+                lbl.setStyleSheet(f"color: {color}; font-size: 22px; font-weight: 800; padding: 2px 0;")
+
+    def _render_current_tab(self):
+        s = self.cached_data.get("series", {})
+        k = self.cached_data.get("kpis", {})
         dias = s.get("dias", [])
         if not dias:
             return
 
         x = np.arange(len(dias))
+        idx = self.tabs.currentIndex()
 
-        # --- 1. Main Large Chart: Balance Financiero ---
-        self.ax_fin.clear()
+        if idx == 0:
+            self._render_tab_ejecutivo(x, dias, s, k)
+        elif idx == 1:
+            self._render_tab_finanzas(x, dias, s)
+        elif idx == 2:
+            self._render_tab_egresos(x, dias, s)
+        elif idx == 3:
+            self._render_tab_policial(x, dias, s)
+        elif idx == 4:
+            self._render_tab_vales(x, dias, s)
+
+    # --- Render Tab 1 ---
+    def _render_tab_ejecutivo(self, x, dias, s, k):
+        # Line/Area Chart: Flujo de caja
+        self.ax_ejecutivo.clear()
         v_tot = np.array(s.get("ventas_total", []))
-        v_sin_pol = np.array(s.get("venta_sin_policias", []))
         egr = np.array(s.get("egresos_total", []))
         saldos = np.array(s.get("saldos_netos", []))
 
-        self.ax_fin.plot(x, v_tot, label="Venta Total (Inc. Tickets)", color="#10b981", marker='o', linewidth=2.5, markersize=5)
-        self.ax_fin.plot(x, v_sin_pol, label="Venta Sin Tickets (EF+YP)", color="#06b6d4", linestyle="--", linewidth=2.0, alpha=0.9)
-        self.ax_fin.plot(x, egr, label="Total Egresos", color="#ef4444", marker='s', linewidth=2.2, markersize=5)
-        self.ax_fin.plot(x, saldos, label="Saldo Neto Diario", color="#818cf8", marker='^', linewidth=2.0, markersize=5)
-        self.ax_fin.fill_between(x, saldos, 0, where=(saldos >= 0), color="#10b981", alpha=0.12, interpolate=True)
-        self.ax_fin.fill_between(x, saldos, 0, where=(saldos < 0), color="#ef4444", alpha=0.15, interpolate=True)
+        self.ax_ejecutivo.plot(x, v_tot, label="Venta Total (Inc. Tickets)", color="#10B981", marker='o', linewidth=2.8, markersize=5)
+        self.ax_ejecutivo.plot(x, egr, label="Total Egresos", color="#F43F5E", marker='s', linewidth=2.5, markersize=5)
+        self.ax_ejecutivo.plot(x, saldos, label="Utilidad Neta Diaria", color="#38BDF8", linestyle="--", linewidth=2.0)
+        self.ax_ejecutivo.fill_between(x, saldos, 0, where=(saldos >= 0), color="#10B981", alpha=0.15, interpolate=True)
+        self.ax_ejecutivo.fill_between(x, saldos, 0, where=(saldos < 0), color="#F43F5E", alpha=0.18, interpolate=True)
 
-        self._style_axis(self.ax_fin, self.fig_fin, x, dias, is_currency=True)
-        self.ax_fin.legend(fontsize=9, facecolor='#1e293b', edgecolor='#334155', labelcolor='white', loc='upper left', framealpha=0.9)
-        self.canvas_fin.draw()
+        self._style_axes(self.ax_ejecutivo, self.fig_ejecutivo, x, dias, is_currency=True)
+        self.ax_ejecutivo.legend(fontsize=9, facecolor='#1F2937', edgecolor='none', labelcolor='#F9FAFB', loc='upper left')
+        self.canvas_ejecutivo.draw()
 
-        # --- 2. Composición de Ingresos (Efectivo vs Yape vs Tickets) ---
-        self.ax_ing.clear()
+        # Donut Chart Revenue
+        self.ax_donut_rev.clear()
+        ef = k.get("efectivo", 0.0)
+        yp = k.get("yape", 0.0)
+        vt = k.get("venta_policial_calculada", 0.0)
+        tot_r = ef + yp + vt
+        if tot_r > 0:
+            sizes = [ef, yp, vt]
+            labels = [f"Efectivo\nS/ {ef:,.0f}", f"Yape\nS/ {yp:,.0f}", f"Tickets\nS/ {vt:,.0f}"]
+            colors = ["#10B981", "#A855F7", "#6366F1"]
+            wedges, texts, autotexts = self.ax_donut_rev.pie(
+                sizes, labels=labels, colors=colors, autopct='%1.1f%%',
+                pctdistance=0.75, startangle=140, textprops=dict(color="#F9FAFB", fontsize=8, fontweight='bold'),
+                wedgeprops=dict(width=0.45, edgecolor='#111827', linewidth=2)
+            )
+            for at in autotexts:
+                at.set_color("#FFFFFF")
+                at.set_fontsize(8)
+        else:
+            self.ax_donut_rev.text(0, 0, "Sin datos de venta", color="#9CA3AF", ha='center', va='center', fontsize=10)
+
+        self.fig_donut_rev.patch.set_facecolor('#111827')
+        self.ax_donut_rev.set_facecolor('#111827')
+        self.canvas_donut_rev.draw()
+
+        # Donut Chart Expenses
+        self.ax_donut_egr.clear()
+        comp = k.get("total_compras", 0.0)
+        gast = k.get("total_gastos", 0.0)
+        pers = k.get("total_personal", 0.0)
+        tot_e = comp + gast + pers
+        if tot_e > 0:
+            sizes_e = [comp, gast, pers]
+            labels_e = [f"Compras\nS/ {comp:,.0f}", f"Gastos\nS/ {gast:,.0f}", f"Personal\nS/ {pers:,.0f}"]
+            colors_e = ["#F97316", "#F59E0B", "#EC4899"]
+            wedges, texts, autotexts = self.ax_donut_egr.pie(
+                sizes_e, labels=labels_e, colors=colors_e, autopct='%1.1f%%',
+                pctdistance=0.75, startangle=140, textprops=dict(color="#F9FAFB", fontsize=8, fontweight='bold'),
+                wedgeprops=dict(width=0.45, edgecolor='#111827', linewidth=2)
+            )
+            for at in autotexts:
+                at.set_color("#FFFFFF")
+                at.set_fontsize(8)
+        else:
+            self.ax_donut_egr.text(0, 0, "Sin datos de egresos", color="#9CA3AF", ha='center', va='center', fontsize=10)
+
+        self.fig_donut_egr.patch.set_facecolor('#111827')
+        self.ax_donut_egr.set_facecolor('#111827')
+        self.canvas_donut_egr.draw()
+
+    # --- Render Tab 2 ---
+    def _render_tab_finanzas(self, x, dias, s):
+        self.ax_fin_stack.clear()
         ef = np.array(s.get("efectivo", []))
         yp = np.array(s.get("yape", []))
         vtick = np.array(s.get("venta_tickets", []))
 
-        self.ax_ing.bar(x, ef, label="Efectivo", color="#10b981", width=0.65, alpha=0.9)
-        self.ax_ing.bar(x, yp, bottom=ef, label="Yape", color="#a855f7", width=0.65, alpha=0.9)
-        self.ax_ing.bar(x, vtick, bottom=ef + yp, label="Venta Tickets (S/ 12)", color="#3b82f6", width=0.65, alpha=0.9)
+        self.ax_fin_stack.bar(x, ef, label="Efectivo", color="#10B981", width=0.62, alpha=0.95)
+        self.ax_fin_stack.bar(x, yp, bottom=ef, label="Yape / Digital", color="#A855F7", width=0.62, alpha=0.95)
+        self.ax_fin_stack.bar(x, vtick, bottom=ef + yp, label="Venta Tickets Policiales", color="#6366F1", width=0.62, alpha=0.95)
 
-        self._style_axis(self.ax_ing, self.fig_ing, x, dias, is_currency=True)
-        self.ax_ing.legend(fontsize=8, facecolor='#1e293b', edgecolor='#334155', labelcolor='white', loc='upper left', framealpha=0.9)
-        self.canvas_ing.draw()
+        self._style_axes(self.ax_fin_stack, self.fig_fin_stack, x, dias, is_currency=True)
+        self.ax_fin_stack.legend(fontsize=9, facecolor='#1F2937', edgecolor='none', labelcolor='#F9FAFB', loc='upper left')
+        self.canvas_fin_stack.draw()
 
-        # --- 3. Desglose de Egresos (Compras vs Gastos vs Personal) ---
-        self.ax_egr.clear()
+    # --- Render Tab 3 ---
+    def _render_tab_egresos(self, x, dias, s):
+        self.ax_egr_daily.clear()
         comp = np.array(s.get("compras", []))
         gast = np.array(s.get("gastos", []))
         pers = np.array(s.get("personal", []))
 
-        self.ax_egr.bar(x, comp, label="Compras/Insumos", color="#f97316", width=0.65, alpha=0.9)
-        self.ax_egr.bar(x, gast, bottom=comp, label="Gastos Operativos", color="#f59e0b", width=0.65, alpha=0.9)
-        self.ax_egr.bar(x, pers, bottom=comp + gast, label="Pagos Personal", color="#ec4899", width=0.65, alpha=0.9)
+        self.ax_egr_daily.bar(x, comp, label="Compras e Insumos", color="#F97316", width=0.62, alpha=0.95)
+        self.ax_egr_daily.bar(x, gast, bottom=comp, label="Gastos Operativos", color="#F59E0B", width=0.62, alpha=0.95)
+        self.ax_egr_daily.bar(x, pers, bottom=comp + gast, label="Pagos al Personal", color="#EC4899", width=0.62, alpha=0.95)
 
-        self._style_axis(self.ax_egr, self.fig_egr, x, dias, is_currency=True)
-        self.ax_egr.legend(fontsize=8, facecolor='#1e293b', edgecolor='#334155', labelcolor='white', loc='upper left', framealpha=0.9)
-        self.canvas_egr.draw()
+        self._style_axes(self.ax_egr_daily, self.fig_egr_daily, x, dias, is_currency=True)
+        self.ax_egr_daily.legend(fontsize=9, facecolor='#1F2937', edgecolor='none', labelcolor='#F9FAFB', loc='upper left')
+        self.canvas_egr_daily.draw()
 
-        # --- 4. Tickets Policiales (Para Unidad vs Local) ---
-        self.ax_pol.clear()
+    # --- Render Tab 4 ---
+    def _render_tab_policial(self, x, dias, s):
+        # Unidad vs Local
+        self.ax_pol_stack.clear()
         u = np.array(s.get("para_unidad", []))
         l = np.array(s.get("local", []))
 
-        self.ax_pol.bar(x, u, label="Para Unidad", color="#3b82f6", width=0.65, alpha=0.9)
-        self.ax_pol.bar(x, l, bottom=u, label="Dentro del Local", color="#06b6d4", width=0.65, alpha=0.9)
+        self.ax_pol_stack.bar(x, u, label="Para Unidad", color="#6366F1", width=0.62, alpha=0.95)
+        self.ax_pol_stack.bar(x, l, bottom=u, label="Dentro del Local", color="#06B6D4", width=0.62, alpha=0.95)
+        self._style_axes(self.ax_pol_stack, self.fig_pol_stack, x, dias, is_currency=False)
+        self.ax_pol_stack.legend(fontsize=9, facecolor='#1F2937', edgecolor='none', labelcolor='#F9FAFB', loc='upper left')
+        self.canvas_pol_stack.draw()
 
-        self._style_axis(self.ax_pol, self.fig_pol, x, dias, is_currency=False)
-        self.ax_pol.legend(fontsize=8, facecolor='#1e293b', edgecolor='#334155', labelcolor='white', loc='upper left', framealpha=0.9)
-        self.canvas_pol.draw()
-
-        # --- 5. Estado de Cobranzas y Vales ---
-        self.ax_val.clear()
+        # Pagados vs Debidos
+        self.ax_pol_pagos.clear()
         pag = np.array(s.get("tickets_pagados", []))
         deb = np.array(s.get("tickets_debidos", []))
-        val_ent = np.array(s.get("vales_entregados", []))
-        val_can = np.array(s.get("vales_canjeados", []))
 
-        # Combine bars for pagados/debidos and line for vales
-        self.ax_val.bar(x - 0.15, pag, width=0.3, label="Tickets Pagados", color="#10b981", alpha=0.85)
-        self.ax_val.bar(x + 0.15, deb, width=0.3, label="Tickets Debidos", color="#ef4444", alpha=0.85)
-        self.ax_val.plot(x, val_can, label="Vales Canjeados", color="#eab308", marker='o', linewidth=2, markersize=4)
+        self.ax_pol_pagos.bar(x - 0.16, pag, width=0.32, label="Tickets Pagados", color="#10B981", alpha=0.9)
+        self.ax_pol_pagos.bar(x + 0.16, deb, width=0.32, label="Tickets Debidos (Por Cobrar)", color="#F43F5E", alpha=0.9)
+        self._style_axes(self.ax_pol_pagos, self.fig_pol_pagos, x, dias, is_currency=False)
+        self.ax_pol_pagos.legend(fontsize=9, facecolor='#1F2937', edgecolor='none', labelcolor='#F9FAFB', loc='upper left')
+        self.canvas_pol_pagos.draw()
 
-        self._style_axis(self.ax_val, self.fig_val, x, dias, is_currency=False)
-        self.ax_val.legend(fontsize=8, facecolor='#1e293b', edgecolor='#334155', labelcolor='white', loc='upper left', framealpha=0.9)
-        self.canvas_val.draw()
+    # --- Render Tab 5 ---
+    def _render_tab_vales(self, x, dias, s):
+        self.ax_val_flow.clear()
+        v_ent = np.array(s.get("vales_entregados", []))
+        v_canj = np.array(s.get("vales_canjeados", []))
 
-    def _style_axis(self, ax, fig, x_ticks, labels, is_currency: bool = False):
-        ax.set_facecolor('#0f172a')
-        fig.patch.set_facecolor('#0f172a')
+        self.ax_val_flow.plot(x, v_ent, label="Vales Entregados", color="#F59E0B", marker='o', linewidth=2.5, markersize=5)
+        self.ax_val_flow.plot(x, v_canj, label="Vales Canjeados", color="#10B981", marker='s', linewidth=2.5, markersize=5)
+        self.ax_val_flow.fill_between(x, v_ent, v_canj, where=(v_ent >= v_canj), color="#F59E0B", alpha=0.12, interpolate=True)
+
+        self._style_axes(self.ax_val_flow, self.fig_val_flow, x, dias, is_currency=False)
+        self.ax_val_flow.legend(fontsize=9, facecolor='#1F2937', edgecolor='none', labelcolor='#F9FAFB', loc='upper left')
+        self.canvas_val_flow.draw()
+
+    def _style_axes(self, ax, fig, x_ticks, labels, is_currency: bool = False):
+        ax.set_facecolor('#111827')
+        fig.patch.set_facecolor('#111827')
         ax.set_xticks(x_ticks)
-        ax.set_xticklabels([f"Día {lbl}" if int(lbl) % 2 == 1 or len(labels) <= 15 else lbl for lbl in labels], rotation=0)
-        ax.tick_params(colors='#94a3b8', labelsize=8)
+        ax.set_xticklabels([f"D{lbl}" if int(lbl) % 2 == 1 or len(labels) <= 15 else lbl for lbl in labels], rotation=0)
+        ax.tick_params(colors='#9CA3AF', labelsize=9)
 
         if is_currency:
             ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda val, loc: f"S/ {val:,.0f}"))
         else:
             ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda val, loc: f"{int(val):,d}"))
 
-        ax.grid(True, linestyle=':', alpha=0.35, color='#334155')
+        ax.grid(True, linestyle='--', alpha=0.25, color='#374151')
         for spine in ax.spines.values():
-            spine.set_color('#1e293b')
+            spine.set_color('#1F2937')
+            spine.set_linewidth(1)
