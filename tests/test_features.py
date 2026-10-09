@@ -144,4 +144,31 @@ def test_calendario_financiero_view_and_service(temp_db):
     assert dias[0]["dia"] == 1
     assert "saldo" in dias[0]
 
+def test_spotlight_and_toast_components(temp_db):
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+
+    from views.components.toast import ToastNotification, ToastManager
+    from views.dialogs.spotlight_search_dialog import SpotlightSearchDialog
+    from services.policia_service import PoliciaService
+    from models.policia import Policia
+
+    # Create dummy police
+    pol_service = PoliciaService()
+    pol_service.repo.db = temp_db
+    pol_service.mes_repo.db = temp_db
+    pol_service.audit_repo.db = temp_db
+    pol_service.crear_policia(Policia(codigo="SP-99", apellidos="QUISPE", nombres="CARLOS", area="TRANSITO"))
+
+    # Verify search dialog structure
+    dialog = SpotlightSearchDialog(policia_service=pol_service)
+    assert len(dialog.modules) >= 10
+    dialog.txt_search.setText("Dashboard")
+    assert dialog.list_results.count() >= 1
+
+    # Verify Toast instance
+    toast = ToastNotification("Test message", toast_type="success", duration_ms=100)
+    assert toast.toast_type == "success"
+
+
 

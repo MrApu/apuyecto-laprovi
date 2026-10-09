@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox,
     QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox,
-    QFileDialog
+    QFileDialog, QButtonGroup, QFrame
 )
 from PySide6.QtCore import Qt
 from typing import Optional, List
@@ -10,6 +10,7 @@ from services.policia_service import PoliciaService
 from services.ticket_service import TicketService
 from views.dialogs.policia_dialog import PoliciaDialog
 from views.dialogs.historial_policia_dialog import HistorialPoliciaDialog
+from views.components.toast import ToastManager
 from reports.csv_exporter import CSVExporter
 
 class PoliciasView(QWidget):
@@ -18,6 +19,7 @@ class PoliciasView(QWidget):
         self.policia_service = PoliciaService()
         self.ticket_service = TicketService()
         self.policias: List[Policia] = []
+        self.active_chip = "TODOS"
         self._init_ui()
 
     def _init_ui(self):
@@ -27,8 +29,8 @@ class PoliciasView(QWidget):
 
         # Header bar
         header_box = QHBoxLayout()
-        lbl_title = QLabel("Base de Datos Maestra de Policías")
-        lbl_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #1F4E78;")
+        lbl_title = QLabel("👮 BASE DE DATOS MAESTRA DE POLICÍAS")
+        lbl_title.setStyleSheet("font-size: 18px; font-weight: 800; color: #F8FAFC;")
         header_box.addWidget(lbl_title)
         header_box.addStretch()
 
@@ -42,6 +44,59 @@ class PoliciasView(QWidget):
         header_box.addWidget(self.btn_exportar)
 
         layout.addLayout(header_box)
+
+        # Quick Filter Chips Row (Item 3)
+        chip_box = QHBoxLayout()
+        chip_box.setSpacing(6)
+        lbl_chip_title = QLabel("⚡ Filtros Rápidos:")
+        lbl_chip_title.setStyleSheet("color: #94A3B8; font-size: 11px; font-weight: 800;")
+        chip_box.addWidget(lbl_chip_title)
+
+        self.chip_group = QButtonGroup(self)
+        self.chip_group.setExclusive(True)
+
+        chips = [
+            ("🔘 Todos", "TODOS"),
+            ("🟢 Activos", "ACTIVOS"),
+            ("🔴 Inactivos", "INACTIVOS"),
+            ("🏢 SECINT", "SECINT"),
+            ("🚗 Tránsito", "TRANSITO"),
+            ("⭐ Con SA-PNP", "CON_SA")
+        ]
+
+        for idx, (label, key) in enumerate(chips):
+            btn_chip = QPushButton(label)
+            btn_chip.setCheckable(True)
+            btn_chip.setCursor(Qt.PointingHandCursor)
+            if key == "TODOS":
+                btn_chip.setChecked(True)
+            btn_chip.setStyleSheet("""
+                QPushButton {
+                    background-color: #111827;
+                    color: #94A3B8;
+                    border: 1px solid #1F2937;
+                    border-radius: 14px;
+                    padding: 4px 12px;
+                    font-size: 11px;
+                    font-weight: 700;
+                }
+                QPushButton:hover {
+                    background-color: #1E293B;
+                    color: #F8FAFC;
+                    border-color: #38BDF8;
+                }
+                QPushButton:checked {
+                    background-color: #1E1B4B;
+                    color: #A5B4FC;
+                    border: 1px solid #6366F1;
+                }
+            """)
+            btn_chip.clicked.connect(lambda _, k=key: self._on_chip_clicked(k))
+            self.chip_group.addButton(btn_chip, idx)
+            chip_box.addWidget(btn_chip)
+
+        chip_box.addStretch()
+        layout.addLayout(chip_box)
 
         # Filter & Search Bar
         filter_box = QHBoxLayout()
@@ -105,6 +160,10 @@ class PoliciasView(QWidget):
             self.cmb_area.setCurrentIndex(idx)
         self.cmb_area.blockSignals(False)
 
+    def _on_chip_clicked(self, key: str):
+        self.active_chip = key
+        self.cargar_datos()
+
     def cargar_datos(self):
         busqueda = self.txt_busqueda.text().strip()
         area = self.cmb_area.currentData()
@@ -120,6 +179,18 @@ class PoliciasView(QWidget):
         if solo_inactivos:
             all_pol = [p for p in all_pol if p.estado == "INACTIVO"]
 
+        # Apply Quick Chip Filters
+        if self.active_chip == "ACTIVOS":
+            all_pol = [p for p in all_pol if p.estado == "ACTIVO"]
+        elif self.active_chip == "INACTIVOS":
+            all_pol = [p for p in all_pol if p.estado == "INACTIVO"]
+        elif self.active_chip == "SECINT":
+            all_pol = [p for p in all_pol if (p.area or "").upper() == "SECINT"]
+        elif self.active_chip == "TRANSITO":
+            all_pol = [p for p in all_pol if "TRANS" in (p.area or "").upper()]
+        elif self.active_chip == "CON_SA":
+            all_pol = [p for p in all_pol if p.sa_pnp and p.sa_pnp != "-"]
+
         self.policias = all_pol
         self.table.setRowCount(len(all_pol))
 
@@ -133,9 +204,9 @@ class PoliciasView(QWidget):
             # Estado
             est_item = QTableWidgetItem(p.estado)
             if p.is_activo:
-                est_item.setForeground(Qt.darkGreen)
+                est_item.setForeground(QColor("#10B981"))
             else:
-                est_item.setForeground(Qt.red)
+                est_item.setForeground(QColor("#F43F5E"))
             est_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(r, 5, est_item)
 
@@ -184,11 +255,11 @@ class PoliciasView(QWidget):
             pol = dlg.get_datos()
             ok, msg, new_id = self.policia_service.crear_policia(pol)
             if ok:
-                QMessageBox.information(self, "Éxito", msg)
+                ToastManager.show_success(f"Policía {pol.apellidos} registrado con éxito", self)
                 self._actualizar_areas_combo()
                 self.cargar_datos()
             else:
-                QMessageBox.warning(self, "Error al Guardar", msg)
+                ToastManager.show_error(msg, self)
 
     def _on_editar_policia(self):
         row = self.table.currentRow()

@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QButtonGroup, QFrame, QScrollArea, QSizePolicy
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon, QFont
+from PySide6.QtGui import QIcon, QFont, QShortcut, QKeySequence
 
 from views.styles.theme import QSS_STYLE
 from views.dashboard_view import DashboardView
@@ -26,6 +26,9 @@ from views.backup_view import BackupView
 
 from views.dialogs.nuevo_mes_dialog import NuevoMesDialog
 from views.dialogs.import_summary_dialog import ImportSummaryDialog
+from views.dialogs.spotlight_search_dialog import SpotlightSearchDialog
+from views.dialogs.historial_policia_dialog import HistorialPoliciaDialog
+from views.components.toast import ToastManager
 from services.mes_service import MesService
 from imports.excel_importer import ExcelImporter
 from models.mes import NOMBRES_MESES
@@ -264,6 +267,32 @@ class MainWindow(QMainWindow):
 
         top_layout.addStretch()
 
+        # Spotlight Search Button (Item 1)
+        self.btn_search = QPushButton("🔍 Buscar (Ctrl+K)")
+        self.btn_search.setCursor(Qt.PointingHandCursor)
+        self.btn_search.setStyleSheet("""
+            QPushButton {
+                background-color: #111827;
+                color: #94A3B8;
+                border: 1px solid #334155;
+                padding: 6px 14px;
+                border-radius: 6px;
+                font-weight: 700;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #1E293B;
+                border-color: #6366F1;
+                color: #FFFFFF;
+            }
+        """)
+        self.btn_search.clicked.connect(self._abrir_spotlight)
+        top_layout.addWidget(self.btn_search)
+
+        # Global Shortcut Ctrl+K
+        self.shortcut_spotlight = QShortcut(QKeySequence("Ctrl+K"), self)
+        self.shortcut_spotlight.activated.connect(self._abrir_spotlight)
+
         # Local Selector
         top_layout.addWidget(QLabel("<b>Sede:</b>"))
         self.cmb_local = QComboBox()
@@ -311,7 +340,7 @@ class MainWindow(QMainWindow):
         self.lbl_estado_mes.setStyleSheet("color: #10B981; font-weight: bold; padding-left: 4px; font-size: 11px;")
         top_layout.addWidget(self.lbl_estado_mes)
 
-        top_layout.addSpacing(10)
+        top_layout.addSpacing(6)
 
         self.btn_importar_excel = QPushButton("📥 Importar Excel")
         self.btn_importar_excel.setProperty("class", "SuccessBtn")
@@ -429,18 +458,32 @@ class MainWindow(QMainWindow):
         if index in self.nav_buttons:
             self.nav_buttons[index].setChecked(True)
 
+    def _abrir_spotlight(self):
+        dlg = SpotlightSearchDialog(self)
+        dlg.action_triggered.connect(self._on_spotlight_action)
+        dlg.exec()
+
+    def _on_spotlight_action(self, tipo: str, payload: Any):
+        if tipo == "module":
+            self._cambiar_vista(payload)
+        elif tipo == "policia":
+            self._cambiar_vista(1)  # Jump to PoliciasView
+            # Open police history
+            dlg = HistorialPoliciaDialog(payload, parent=self)
+            dlg.exec()
+
     def _on_crear_nuevo_mes(self):
         dlg = NuevoMesDialog(self)
         if dlg.exec():
             anio, mes, precio = dlg.get_datos()
             ok, msg, mes_id = self.mes_service.crear_mes(anio, mes, precio)
             if ok:
-                QMessageBox.information(self, "Mes Creado", msg)
+                ToastManager.show_success(f"Período {mes:02d}/{anio} abierto con éxito", self)
                 self.cmb_anio.setCurrentText(str(anio))
                 self.cmb_mes.setCurrentIndex(mes - 1)
                 self._sincronizar_periodo()
             else:
-                QMessageBox.warning(self, "Aviso", msg)
+                ToastManager.show_error(msg, self)
 
     def _on_importar_excel(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -459,3 +502,5 @@ class MainWindow(QMainWindow):
         self._sincronizar_periodo()
         self.view_policias.cargar_datos()
         self.view_dashboard.cargar_datos()
+        ToastManager.show_success("Datos de Excel integrados correctamente en SQLite", self)
+

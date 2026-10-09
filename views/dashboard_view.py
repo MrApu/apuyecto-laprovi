@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QFrame,
-    QScrollArea, QPushButton, QTabWidget, QTabBar, QSizePolicy
+    QScrollArea, QPushButton, QTabWidget, QTabBar, QSizePolicy, QApplication
 )
 from PySide6.QtCore import Qt
 from typing import Optional, Dict, Any
@@ -11,6 +11,7 @@ import numpy as np
 
 from services.dashboard_service import DashboardService
 from models.local import LOCAL_RESTAURANTE, LOCAL_FAST_FOOD, LOCAL_CONSOLIDADO, LOCAL_NAMES
+from views.components.toast import ToastManager
 
 class DashboardView(QWidget):
     """
@@ -66,7 +67,26 @@ class DashboardView(QWidget):
 
         header_box.addStretch()
 
-        self.btn_refresh = QPushButton("🔄 Actualizar Métricas")
+        self.btn_whatsapp = QPushButton("📲 Copiar WhatsApp")
+        self.btn_whatsapp.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #047857, stop:1 #10B981);
+                color: #FFFFFF;
+                font-weight: 800;
+                font-size: 13px;
+                padding: 7px 16px;
+                border-radius: 8px;
+                border: 1px solid #34D399;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #065F46, stop:1 #059669);
+                border: 1px solid #6EE7B7;
+            }
+        """)
+        self.btn_whatsapp.clicked.connect(self._copiar_whatsapp)
+        header_box.addWidget(self.btn_whatsapp)
+
+        self.btn_refresh = QPushButton("🔄 Actualizar")
         self.btn_refresh.setStyleSheet("""
             QPushButton {
                 background-color: #6366F1;
@@ -75,7 +95,7 @@ class DashboardView(QWidget):
                 font-size: 13px;
                 padding: 7px 18px;
                 border-radius: 8px;
-                border: none;
+                border: 1px solid #818CF8;
             }
             QPushButton:hover {
                 background-color: #4F46E5;
@@ -84,7 +104,7 @@ class DashboardView(QWidget):
                 background-color: #4338CA;
             }
         """)
-        self.btn_refresh.clicked.connect(self.cargar_datos)
+        self.btn_refresh.clicked.connect(self._on_refresh_clicked)
         header_box.addWidget(self.btn_refresh)
         main_layout.addLayout(header_box)
 
@@ -642,3 +662,33 @@ class DashboardView(QWidget):
         for spine in ax.spines.values():
             spine.set_color('#1F2937')
             spine.set_linewidth(1)
+
+    def _on_refresh_clicked(self):
+        self.cargar_datos()
+        ToastManager.show_success("Métricas del Dashboard actualizadas", self)
+
+    def _copiar_whatsapp(self):
+        d = self.cached_data
+        if not d:
+            return
+        ej = d.get("ejecutivo", {})
+        sede_name = LOCAL_NAMES.get(self.current_local, self.current_local.upper())
+        signo = "+" if ej.get("saldo_neto", 0) > 0 else ""
+
+        texto = (
+            f"📊 *RESUMEN EJECUTIVO BI — {sede_name.upper()}*\n"
+            f"📅 *Período:* {self.current_mes:02d}/{self.current_anio}\n"
+            f"───────────────────────────\n"
+            f"💰 *Venta Total:* S/ {ej.get('total_ventas', 0):,.2f}\n"
+            f"💸 *Total Egresos:* S/ {ej.get('total_egresos', 0):,.2f}\n"
+            f"⚖️ *SALDO NETO:* {signo}S/ {ej.get('saldo_neto', 0):,.2f}\n"
+            f"📈 *Margen Operativo:* {ej.get('rentabilidad_pct', 0):.1f}%\n"
+            f"───────────────────────────\n"
+            f"👮 *Tickets Policiales:* {ej.get('tickets_policiales', 0)} emitidos\n"
+            f"💰 *Cobranzas Realizadas:* S/ {ej.get('recaudacion_policial', 0):,.2f}\n"
+            f"💳 *Deuda Pendiente:* S/ {ej.get('deuda_policial_pendiente', 0):,.2f}\n"
+            f"🌟 *LA PROVINCIAL* — Sistema de Gestión Modular BI"
+        )
+        QApplication.clipboard().setText(texto)
+        ToastManager.show_success("¡Resumen ejecutivo copiado al portapapeles para WhatsApp!", self)
+

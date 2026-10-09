@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any, List
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QComboBox, QMessageBox,
-    QFrame, QScrollArea, QDialog, QSizePolicy, QButtonGroup
+    QFrame, QScrollArea, QDialog, QSizePolicy, QButtonGroup, QApplication
 )
 from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import QColor, QFont, QCursor
@@ -19,6 +19,8 @@ from services.financiero_service import FinancieroService
 from services.mes_service import MesService
 from models.local import LOCAL_RESTAURANTE, LOCAL_FAST_FOOD, LOCAL_CONSOLIDADO, LOCAL_NAMES
 from models.ticket import DIAS_SEMANA_ES
+from views.components.toast import ToastManager
+from views.dialogs.detalle_dia_dialog import DetalleDiaDialog
 
 class FloatingMiniReportPopup(QFrame):
     """
@@ -103,6 +105,10 @@ class FloatingMiniReportPopup(QFrame):
         self.lbl_rentabilidad.setStyleSheet("color: #F59E0B; font-size: 11px; font-weight: bold;")
         self.layout.addWidget(self.lbl_rentabilidad)
 
+        lbl_hint = QLabel("💡 Doble clic para abrir bitácora completa")
+        lbl_hint.setStyleSheet("color: #64748B; font-size: 10px; font-style: italic; padding-top: 2px;")
+        self.layout.addWidget(lbl_hint)
+
     def _create_divider(self) -> QFrame:
         line = QFrame()
         line.setFrameShape(QFrame.HLine)
@@ -163,11 +169,14 @@ class FloatingMiniReportPopup(QFrame):
 
 class DayTileWidget(QFrame):
     """
-    Celda de día en la cuadrícula del calendario con interactividad hover.
+    Celda de día en la cuadrícula del calendario con interactividad hover y doble clic drill-down.
     """
-    def __init__(self, dia: int, data: Optional[Dict[str, Any]], sede_name: str, popup: FloatingMiniReportPopup, parent=None):
+    def __init__(self, anio: int, mes: int, dia: int, local_id: str, data: Optional[Dict[str, Any]], sede_name: str, popup: FloatingMiniReportPopup, parent=None):
         super().__init__(parent)
+        self.anio = anio
+        self.mes = mes
         self.dia = dia
+        self.local_id = local_id
         self.data = data
         self.sede_name = sede_name
         self.popup = popup
@@ -192,6 +201,8 @@ class DayTileWidget(QFrame):
                 }
             """)
             return
+
+        self.setCursor(Qt.PointingHandCursor)
 
         # Active Day styling
         self.setStyleSheet("""
@@ -259,9 +270,7 @@ class DayTileWidget(QFrame):
     def enterEvent(self, event):
         if self.data and self.popup:
             self.popup.set_data(self.data, self.sede_name)
-            # Position the popup right above or beside the day tile
             global_pos = self.mapToGlobal(QPoint(self.width() + 10, -20))
-            # Screen edge check
             screen_geom = self.screen().geometry() if self.screen() else None
             if screen_geom and (global_pos.x() + 280 > screen_geom.right()):
                 global_pos = self.mapToGlobal(QPoint(-290, -20))
@@ -273,6 +282,14 @@ class DayTileWidget(QFrame):
         if self.popup:
             self.popup.hide()
         super().leaveEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        if self.dia:
+            if self.popup:
+                self.popup.hide()
+            dlg = DetalleDiaDialog(self.anio, self.mes, self.dia, self.local_id, parent=self)
+            dlg.exec()
+        super().mouseDoubleClickEvent(event)
 
 
 class GraficaFinancieraDialog(QDialog):
@@ -363,6 +380,8 @@ class CalendarioFinancieroView(QWidget):
     Vista de Calendario Financiero interactivo con:
     - Cuadrícula visual mensual de 7 columnas (Lunes a Domingo).
     - Mini-Reporte flotante con desglose completo al pasar el mouse por cada día.
+    - Drill-Down al hacer doble clic sobre cualquier día para ver la bitácora completa.
+    - Botón 1-Clic para copiar el reporte mensual o diario a WhatsApp.
     - Botón de Gráfica Financiera mensual en Alta Definición.
     - Alternancia fluida entre Vista Cuadrícula Calendario y Vista Tabla Detallada.
     """
@@ -374,6 +393,7 @@ class CalendarioFinancieroView(QWidget):
         self.current_year = 2026
         self.current_month = 9
         self.cached_dias: List[Dict[str, Any]] = []
+        self.cached_resumen: Dict[str, Any] = {}
 
         # Floating Mini-Report Popup Singleton
         self.popup_report = FloatingMiniReportPopup(self)
@@ -415,6 +435,25 @@ class CalendarioFinancieroView(QWidget):
         header.addWidget(self.lbl_local_badge)
 
         header.addStretch()
+
+        # Botón Copiar WhatsApp
+        self.btn_whatsapp = QPushButton("📲 WhatsApp")
+        self.btn_whatsapp.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #047857, stop:1 #10B981);
+                color: #FFFFFF;
+                border: 1px solid #34D399;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-weight: 800;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #065F46, stop:1 #059669);
+                border: 1px solid #6EE7B7;
+            }
+        """)
+        self.btn_whatsapp.clicked.connect(self._copiar_whatsapp_mes)
+        header.addWidget(self.btn_whatsapp)
 
         # View Mode Switcher Buttons
         self.btn_grid_mode = QPushButton("📅 Cuadrícula")
@@ -468,16 +507,16 @@ class CalendarioFinancieroView(QWidget):
         self.btn_grafica = QPushButton("📈 Ver Gráfica")
         self.btn_grafica.setStyleSheet("""
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #059669, stop:1 #10B981);
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4F46E5, stop:1 #6366F1);
                 color: #FFFFFF;
-                border: 1px solid #34D399;
+                border: 1px solid #818CF8;
                 border-radius: 6px;
                 padding: 6px 16px;
                 font-weight: 800;
             }
             QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #047857, stop:1 #059669);
-                border: 1px solid #6EE7B7;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4338CA, stop:1 #4F46E5);
+                border: 1px solid #A5B4FC;
             }
         """)
         self.btn_grafica.clicked.connect(self._mostrar_grafica)
@@ -540,6 +579,9 @@ class CalendarioFinancieroView(QWidget):
         self.table.setHorizontalHeaderLabels(headers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.setAlternatingRowColors(True)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.doubleClicked.connect(self._on_table_double_clicked)
         self.table.setVisible(False)
         main_layout.addWidget(self.table)
 
@@ -576,6 +618,45 @@ class CalendarioFinancieroView(QWidget):
         dlg = GraficaFinancieraDialog(self.cached_dias, mes_nombre, sede_name, self)
         dlg.exec()
 
+    def _on_table_double_clicked(self, index):
+        row = index.row()
+        if 0 <= row < len(self.cached_dias):
+            dia_info = self.cached_dias[row]
+            dia_num = dia_info.get("dia", 1)
+            dlg = DetalleDiaDialog(self.current_year, self.current_month, dia_num, self.current_local, parent=self)
+            dlg.exec()
+
+    def _copiar_whatsapp_mes(self):
+        res = self.cached_resumen
+        if not res:
+            return
+        sede_name = LOCAL_NAMES.get(self.current_local, self.current_local.upper())
+        mes_nombre = self.combo_periodo.currentText()
+        signo = "+" if res.get('saldo_neto', 0) > 0 else ""
+
+        texto = (
+            f"🌟 *REPORTE FINANCIERO MENSUAL — {sede_name.upper()}*\n"
+            f"📅 *Período:* {mes_nombre}\n"
+            f"───────────────────────────\n"
+            f"💵 *INGRESOS / VENTAS:*\n"
+            f"  • Efectivo: S/ {res.get('efectivo', 0):,.2f}\n"
+            f"  • Yape / Digital: S/ {res.get('yape', 0):,.2f}\n"
+            f"  • Tickets PNP ({res.get('cantidad_tickets', 0)}): S/ {res.get('venta_tickets', 0):,.2f}\n"
+            f"  ➜ *TOTAL VENTAS:* S/ {res.get('total_ventas', 0):,.2f}\n"
+            f"───────────────────────────\n"
+            f"💸 *EGRESOS OPERATIVOS:*\n"
+            f"  • Compras / Insumos: S/ {res.get('total_compras', 0):,.2f}\n"
+            f"  • Gastos Operativos: S/ {res.get('total_gastos', 0):,.2f}\n"
+            f"  • Planilla / Personal: S/ {res.get('total_personal', 0):,.2f}\n"
+            f"  ➜ *TOTAL EGRESOS:* S/ {res.get('total_egresos', 0):,.2f}\n"
+            f"───────────────────────────\n"
+            f"⚖️ *SALDO NETO:* {signo}S/ {res.get('saldo_neto', 0):,.2f}\n"
+            f"📊 *Rentabilidad Neta:* {res.get('rentabilidad_pct', 0):.1f}%\n"
+            f"🌟 *LA PROVINCIAL* — Sistema de Control"
+        )
+        QApplication.clipboard().setText(texto)
+        ToastManager.show_success("¡Reporte mensual copiado al portapapeles para WhatsApp!", self)
+
     def _load_periodos(self):
         self.combo_periodo.blockSignals(True)
         self.combo_periodo.clear()
@@ -600,6 +681,7 @@ class CalendarioFinancieroView(QWidget):
 
         # 1. Update KPIs
         res = self.financiero_service.get_resumen_financiero_mes(anio, mes, local)
+        self.cached_resumen = res
         self._update_kpi(self.card_ventas, f"S/ {res['total_ventas']:,.2f}")
         self._update_kpi(self.card_egresos, f"S/ {res['total_egresos']:,.2f}")
         
@@ -614,7 +696,6 @@ class CalendarioFinancieroView(QWidget):
         dias_by_num = {d["dia"]: d for d in dias}
 
         # 3. Rebuild Calendar Grid
-        # Clear existing grid
         while self.grid_layout.count():
             item = self.grid_layout.takeAt(0)
             widget = item.widget()
@@ -646,7 +727,7 @@ class CalendarioFinancieroView(QWidget):
         for row_idx, week in enumerate(month_matrix, start=1):
             for col_idx, day_num in enumerate(week):
                 day_data = dias_by_num.get(day_num) if day_num > 0 else None
-                tile = DayTileWidget(day_num, day_data, sede_name, self.popup_report, self)
+                tile = DayTileWidget(anio, mes, day_num, local, day_data, sede_name, self.popup_report, self)
                 self.grid_layout.addWidget(tile, row_idx, col_idx)
 
         # 4. Populate Table
