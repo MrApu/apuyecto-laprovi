@@ -31,6 +31,12 @@ class DashboardService:
         self.personal_repo = personal_repo or PagoPersonalRepository()
 
     def get_dashboard_data(self, anio: int, mes: int, local_id: str = "restaurante") -> Dict[str, Any]:
+        if local_id == LOCAL_CONSOLIDADO:
+            self.ticket_repo.inicializar_dias_mes(anio, mes, "restaurante")
+            self.ticket_repo.inicializar_dias_mes(anio, mes, "fast_food")
+        else:
+            self.ticket_repo.inicializar_dias_mes(anio, mes, local_id)
+
         res_ventas = self.venta_repo.get_resumen_mes(anio, mes, local_id)
         res_vales = self.vale_repo.get_resumen_mes(anio, mes, local_id)
         res_pagos = self.pago_repo.get_resumen_mes(anio, mes, local_id)
@@ -42,6 +48,11 @@ class DashboardService:
         tot_egresos = round(tot_compras + tot_gastos + tot_personal, 2)
 
         total_ventas = res_ventas.get("venta_total", 0.0)
+        tot_efectivo = res_ventas.get("efectivo", 0.0)
+        tot_yape = res_ventas.get("yape", 0.0)
+        tot_venta_sin_t = res_ventas.get("venta_sin_tickets", 0.0)
+        tot_venta_tickets = res_ventas.get("venta_tickets", 0.0)
+
         saldo_neto = round(total_ventas - tot_egresos, 2)
         rentabilidad = round((saldo_neto / total_ventas * 100.0), 2) if total_ventas > 0 else 0.0
 
@@ -77,8 +88,14 @@ class DashboardService:
         # Daily series for charts
         dias_labels = []
         serie_ventas_total = []
-        serie_ventas_sin_pol = []
+        serie_efectivo = []
+        serie_yape = []
+        serie_venta_sin_pol = []
+        serie_venta_tickets = []
         serie_egresos_total = []
+        serie_compras = []
+        serie_gastos = []
+        serie_personal = []
         serie_saldos_netos = []
         serie_unidad = []
         serie_local = []
@@ -101,12 +118,26 @@ class DashboardService:
 
             vd = ventas_diarias_map.get(td.fecha)
             vt = vd.venta_total if vd else 0.0
+            ef = vd.efectivo if vd else 0.0
+            yp = vd.yape if vd else 0.0
             st = vd.venta_sin_tickets if vd else 0.0
-            serie_ventas_total.append(vt)
-            serie_ventas_sin_pol.append(st)
+            vtick = vd.venta_tickets if vd else round(td.total_policias * precio_unitario, 2)
 
-            egr_dia = round(compras_map.get(td.fecha, 0.0) + gastos_map.get(td.fecha, 0.0) + personal_map.get(td.fecha, 0.0), 2)
+            serie_ventas_total.append(vt)
+            serie_efectivo.append(ef)
+            serie_yape.append(yp)
+            serie_venta_sin_pol.append(st)
+            serie_venta_tickets.append(vtick)
+
+            c_dia = compras_map.get(td.fecha, 0.0)
+            g_dia = gastos_map.get(td.fecha, 0.0)
+            p_dia = personal_map.get(td.fecha, 0.0)
+            egr_dia = round(c_dia + g_dia + p_dia, 2)
             saldo_dia = round(vt - egr_dia, 2)
+
+            serie_compras.append(c_dia)
+            serie_gastos.append(g_dia)
+            serie_personal.append(p_dia)
             serie_egresos_total.append(egr_dia)
             serie_saldos_netos.append(saldo_dia)
 
@@ -121,9 +152,9 @@ class DashboardService:
         return {
             "kpis": {
                 "venta_total": total_ventas,
-                "efectivo": res_ventas.get("efectivo", 0.0),
-                "yape": res_ventas.get("yape", 0.0),
-                "venta_sin_tickets": res_ventas.get("venta_sin_tickets", 0.0),
+                "efectivo": tot_efectivo,
+                "yape": tot_yape,
+                "venta_sin_tickets": tot_venta_sin_t,
                 "total_tickets_policiales": tot_policias,
                 "tickets_para_unidad": tot_unidad,
                 "tickets_local": tot_local,
@@ -138,8 +169,8 @@ class DashboardService:
                 "saldo_vales": res_vales.get("saldo", 0),
                 "tickets_pagados": res_pagos.get("pagados", 0),
                 "tickets_debidos": res_pagos.get("debidos", 0),
-                "venta_policial_calculada": res_ventas.get("venta_tickets", 0.0) or round(tot_policias * precio_unitario, 2),
-                "venta_sin_policias": res_ventas.get("venta_sin_tickets", 0.0),
+                "venta_policial_calculada": tot_venta_tickets or round(tot_policias * precio_unitario, 2),
+                "venta_sin_policias": tot_venta_sin_t,
                 "monto_pendiente": monto_pendiente,
                 "precio_menu": precio_unitario,
                 "menus_vendidos": tot_policias
@@ -147,9 +178,15 @@ class DashboardService:
             "series": {
                 "dias": dias_labels,
                 "ventas_total": serie_ventas_total,
+                "efectivo": serie_efectivo,
+                "yape": serie_yape,
+                "venta_sin_policias": serie_venta_sin_pol,
+                "venta_tickets": serie_venta_tickets,
                 "egresos_total": serie_egresos_total,
+                "compras": serie_compras,
+                "gastos": serie_gastos,
+                "personal": serie_personal,
                 "saldos_netos": serie_saldos_netos,
-                "ventas_sin_policias": serie_ventas_sin_pol,
                 "para_unidad": serie_unidad,
                 "local": serie_local,
                 "policias": serie_policias,
