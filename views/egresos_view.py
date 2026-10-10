@@ -15,6 +15,8 @@ from models.compra import Compra
 from models.gasto import Gasto
 from models.pago_personal import PagoPersonal
 from models.local import LOCAL_RESTAURANTE, LOCAL_FAST_FOOD, LOCAL_CONSOLIDADO, LOCAL_NAMES
+from views.components.toast import ToastManager
+from views.dialogs.compra_dialog import CompraSimpleDialog
 
 class EgresosView(QWidget):
     def __init__(self, egreso_service: Optional[EgresoService] = None, mes_service: Optional[MesService] = None, parent=None):
@@ -113,22 +115,33 @@ class EgresosView(QWidget):
         w = QWidget()
         l = QVBoxLayout(w)
         toolbar = QHBoxLayout()
-        btn_add = QPushButton("➕ Registrar Compra")
-        btn_add.setStyleSheet("background: #0284c7; color: white; font-weight: bold; padding: 6px 12px; border-radius: 4px;")
+        btn_add = QPushButton("➕ Registrar Compra / Insumo")
+        btn_add.setStyleSheet("background: #0284c7; color: white; font-weight: bold; padding: 6px 14px; border-radius: 6px;")
         btn_add.clicked.connect(self._add_compra)
         toolbar.addWidget(btn_add)
 
         btn_del = QPushButton("🗑️ Eliminar Compra")
+        btn_del.setStyleSheet("background: #334155; color: #f87171; font-weight: bold; padding: 6px 12px; border-radius: 6px;")
         btn_del.clicked.connect(self._del_compra)
         toolbar.addWidget(btn_del)
+        
+        lbl_hint = QLabel("💡 Doble clic en cualquier compra para editar el monto u observación.")
+        lbl_hint.setStyleSheet("color: #64748b; font-size: 11px; margin-left: 8px;")
+        toolbar.addWidget(lbl_hint)
+        
         toolbar.addStretch()
         l.addLayout(toolbar)
 
         self.tbl_compras = QTableWidget()
-        self.tbl_compras.setColumnCount(8)
-        self.tbl_compras.setHorizontalHeaderLabels(["ID", "Fecha", "Local", "Proveedor", "Categoría", "Descripción", "Total", "Medio Pago"])
-        self.tbl_compras.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.tbl_compras.setColumnCount(7)
+        self.tbl_compras.setHorizontalHeaderLabels([
+            "ID", "Fecha", "Sede", "¿Qué se compró? (Detalle / Observación)", "Categoría", "Monto Gastado (S/)", "Medio Pago"
+        ])
+        self.tbl_compras.setColumnHidden(0, True)  # Ocultar ID interno
+        self.tbl_compras.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.tbl_compras.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
         self.tbl_compras.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tbl_compras.cellDoubleClicked.connect(self._on_compra_double_clicked)
         l.addWidget(self.tbl_compras)
         return w
 
@@ -206,18 +219,18 @@ class EgresosView(QWidget):
         self._update_kpi(self.card_personal, res["total_personal"])
         self._update_kpi(self.card_total, res["total_egresos"])
 
-        # 2. Compras Table
+        # 2. Compras Table (Simplified)
         compras = self.egreso_service.get_compras_mes(anio, mes, local)
         self.tbl_compras.setRowCount(len(compras))
         for r, c in enumerate(compras):
             self.tbl_compras.setItem(r, 0, QTableWidgetItem(str(c.id or "")))
             self.tbl_compras.setItem(r, 1, QTableWidgetItem(c.fecha))
             self.tbl_compras.setItem(r, 2, QTableWidgetItem(LOCAL_NAMES.get(c.local_id, c.local_id)))
-            self.tbl_compras.setItem(r, 3, QTableWidgetItem(c.proveedor))
-            self.tbl_compras.setItem(r, 4, QTableWidgetItem(c.categoria))
-            self.tbl_compras.setItem(r, 5, QTableWidgetItem(c.descripcion))
-            self.tbl_compras.setItem(r, 6, QTableWidgetItem(f"S/ {c.total:,.2f}"))
-            self.tbl_compras.setItem(r, 7, QTableWidgetItem(c.medio_pago))
+            obs_text = c.observacion if c.observacion and c.observacion.strip() else c.descripcion
+            self.tbl_compras.setItem(r, 3, QTableWidgetItem(obs_text or ""))
+            self.tbl_compras.setItem(r, 4, QTableWidgetItem(c.categoria or "INSUMOS"))
+            self.tbl_compras.setItem(r, 5, QTableWidgetItem(f"S/ {c.total:,.2f}"))
+            self.tbl_compras.setItem(r, 6, QTableWidgetItem(c.medio_pago or "EFECTIVO"))
 
         # 3. Gastos Table
         gastos = self.egreso_service.get_gastos_mes(anio, mes, local)
@@ -246,70 +259,32 @@ class EgresosView(QWidget):
 
     # --- Add/Del Dialog Handlers ---
     def _add_compra(self):
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Registrar Compra / Insumo")
-        layout = QFormLayout(dlg)
-
-        dt_edit = QDateEdit(QDate(self.current_year, self.current_month, 1))
-        dt_edit.setCalendarPopup(True)
-        layout.addRow("Fecha:", dt_edit)
-
-        combo_loc = QComboBox()
-        combo_loc.addItem("LA PROVINCIAL RESTAURANTE", LOCAL_RESTAURANTE)
-        combo_loc.addItem("LA PROVINCIAL FAST FOOD", LOCAL_FAST_FOOD)
-        if self.current_local in (LOCAL_RESTAURANTE, LOCAL_FAST_FOOD):
-            combo_loc.setCurrentIndex(0 if self.current_local == LOCAL_RESTAURANTE else 1)
-        layout.addRow("Local:", combo_loc)
-
-        txt_prov = QLineEdit()
-        layout.addRow("Proveedor:", txt_prov)
-
-        txt_cat = QComboBox()
-        txt_cat.addItems(["INSUMOS", "VERDURAS", "CARNES", "ABARROTES", "BEBIDAS", "LIMPIEZA", "OTROS"])
-        layout.addRow("Categoría:", txt_cat)
-
-        txt_desc = QLineEdit()
-        layout.addRow("Descripción:", txt_desc)
-
-        spn_cant = QDoubleSpinBox()
-        spn_cant.setRange(0.01, 99999.0)
-        spn_cant.setValue(1.0)
-        layout.addRow("Cantidad:", spn_cant)
-
-        spn_unit = QDoubleSpinBox()
-        spn_unit.setRange(0.0, 999999.0)
-        spn_unit.setValue(0.0)
-        layout.addRow("Precio Unitario:", spn_unit)
-
-        spn_tot = QDoubleSpinBox()
-        spn_tot.setRange(0.0, 9999999.0)
-        spn_tot.setValue(0.0)
-        spn_unit.valueChanged.connect(lambda: spn_tot.setValue(spn_cant.value() * spn_unit.value()))
-        spn_cant.valueChanged.connect(lambda: spn_tot.setValue(spn_cant.value() * spn_unit.value()))
-        layout.addRow("Total:", spn_tot)
-
-        combo_pago = QComboBox()
-        combo_pago.addItems(["EFECTIVO", "YAPE", "TRANSFERENCIA", "TARJETA", "CREDITO"])
-        layout.addRow("Medio de Pago:", combo_pago)
-
-        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        btns.accepted.connect(dlg.accept)
-        btns.rejected.connect(dlg.reject)
-        layout.addRow(btns)
-
+        dlg = CompraSimpleDialog(self, anio=self.current_year, mes=self.current_month, local_id=self.current_local)
         if dlg.exec() == QDialog.Accepted:
-            c = Compra(
-                fecha=dt_edit.date().toString("yyyy-MM-dd"),
-                local_id=combo_loc.currentData(),
-                proveedor=txt_prov.text().strip() or "GENERAL",
-                categoria=txt_cat.currentText(),
-                descripcion=txt_desc.text().strip() or "Compra",
-                cantidad=spn_cant.value(),
-                precio_unitario=spn_unit.value(),
-                total=spn_tot.value(),
-                medio_pago=combo_pago.currentText()
-            )
-            self.egreso_service.registrar_compra(c)
+            compra = dlg.get_compra()
+            ok, msg, _ = self.egreso_service.registrar_compra(compra)
+            if ok:
+                ToastManager.show_success(f"Compra registrada: S/ {compra.total:,.2f}", self)
+            else:
+                QMessageBox.warning(self, "Error", msg)
+            self.refresh_data()
+
+    def _on_compra_double_clicked(self, row: int, col: int):
+        item = self.tbl_compras.item(row, 0)
+        if not item or not item.text():
+            return
+        cid = int(item.text())
+        compra = self.egreso_service.get_compra_by_id(cid)
+        if not compra:
+            return
+        dlg = CompraSimpleDialog(self, compra=compra)
+        if dlg.exec() == QDialog.Accepted:
+            compra_mod = dlg.get_compra()
+            ok, msg = self.egreso_service.actualizar_compra(compra_mod)
+            if ok:
+                ToastManager.show_success(f"Compra #{compra_mod.id} actualizada", self)
+            else:
+                QMessageBox.warning(self, "Error", msg)
             self.refresh_data()
 
     def _del_compra(self):
@@ -319,7 +294,9 @@ class EgresosView(QWidget):
             return
         cid = int(self.tbl_compras.item(row, 0).text())
         if QMessageBox.question(self, "Confirmar", "¿Eliminar compra seleccionada?") == QMessageBox.Yes:
-            self.egreso_service.eliminar_compra(cid)
+            ok, msg = self.egreso_service.eliminar_compra(cid)
+            if ok:
+                ToastManager.show_info("Compra eliminada.", self)
             self.refresh_data()
 
     def _add_gasto(self):

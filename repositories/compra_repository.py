@@ -31,14 +31,12 @@ class CompraRepository:
         return [self._row_to_entity(r) for r in rows]
 
     def create(self, c: Compra) -> int:
-        if (c.total or 0.0) > 0 and (c.precio_unitario or 0.0) == 0.0:
+        if (c.total or 0.0) > 0:
             total = float(c.total)
             precio_unitario = round(total / (c.cantidad or 1.0), 2)
         else:
             precio_unitario = c.precio_unitario or 0.0
             total = round((c.cantidad or 1.0) * precio_unitario, 2)
-            if c.total and c.total > 0:
-                total = c.total
 
         query = """
             INSERT INTO compras (fecha, local_id, proveedor, categoria, descripcion, cantidad, precio_unitario, total, medio_pago, nro_documento, observacion, fecha_creacion)
@@ -63,14 +61,12 @@ class CompraRepository:
         return self.create(c)
 
     def update(self, c: Compra) -> bool:
-        if (c.total or 0.0) > 0 and (c.precio_unitario or 0.0) == 0.0:
+        if (c.total or 0.0) > 0:
             total = float(c.total)
             precio_unitario = round(total / (c.cantidad or 1.0), 2)
         else:
             precio_unitario = c.precio_unitario or 0.0
             total = round((c.cantidad or 1.0) * precio_unitario, 2)
-            if c.total and c.total > 0:
-                total = c.total
 
         query = """
             UPDATE compras

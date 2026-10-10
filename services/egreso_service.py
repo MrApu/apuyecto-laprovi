@@ -45,10 +45,14 @@ class EgresoService:
 
     # --- Compras ---
     def registrar_compra(self, compra: Compra, usuario: str = "USUARIO") -> Tuple[bool, str, Optional[int]]:
-        if compra.cantidad <= 0 or compra.precio_unitario < 0:
-            return False, "La cantidad debe ser mayor a 0 y el precio no puede ser negativo.", None
-        if not compra.proveedor.strip():
-            return False, "El proveedor es obligatorio.", None
+        if not compra.proveedor or not compra.proveedor.strip():
+            compra.proveedor = "GENERAL"
+        if not compra.descripcion or not compra.descripcion.strip():
+            compra.descripcion = compra.observacion.strip() if compra.observacion else "COMPRA GENERAL"
+        if (compra.cantidad or 0.0) <= 0:
+            compra.cantidad = 1.0
+        if (compra.precio_unitario or 0.0) < 0:
+            return False, "El precio no puede ser negativo.", None
 
         if (compra.total or 0.0) > 0 and (compra.precio_unitario or 0.0) == 0.0:
             compra.precio_unitario = round(compra.total / (compra.cantidad or 1.0), 2)
@@ -65,6 +69,34 @@ class EgresoService:
             usuario=usuario
         )
         return True, "Compra registrada exitosamente.", new_id
+
+    def get_compra_by_id(self, compra_id: int) -> Optional[Compra]:
+        return self.compra_repo.get_by_id(compra_id)
+
+    def actualizar_compra(self, compra: Compra, usuario: str = "USUARIO") -> Tuple[bool, str]:
+        if not compra.id:
+            return False, "ID de compra no especificado."
+        if not compra.proveedor or not compra.proveedor.strip():
+            compra.proveedor = "GENERAL"
+        if not compra.descripcion or not compra.descripcion.strip():
+            compra.descripcion = compra.observacion.strip() if compra.observacion else "COMPRA GENERAL"
+        if (compra.cantidad or 0.0) <= 0:
+            compra.cantidad = 1.0
+        if (compra.total or 0.0) > 0:
+            compra.precio_unitario = round(compra.total / (compra.cantidad or 1.0), 2)
+        else:
+            compra.total = round((compra.cantidad or 1.0) * (compra.precio_unitario or 0.0), 2)
+
+        self.compra_repo.update(compra)
+        self.audit_repo.registrar(
+            accion="ACTUALIZAR_COMPRA",
+            entidad="compras",
+            entidad_id=str(compra.id),
+            local_id=compra.local_id,
+            detalles=f"Actualizada compra ID {compra.id} - Total: S/ {compra.total:.2f}",
+            usuario=usuario
+        )
+        return True, "Compra actualizada exitosamente."
 
     def eliminar_compra(self, compra_id: int, usuario: str = "USUARIO") -> Tuple[bool, str]:
         c = self.compra_repo.get_by_id(compra_id)
