@@ -462,19 +462,23 @@ class DashboardView(QWidget):
         self._update_label(self.kpi_egresos, "total_personal", f"S/ {k.get('total_personal', 0.0):,.2f}")
         self._update_label(self.kpi_egresos, "total_egresos_tab3", f"S/ {k.get('total_egresos', 0.0):,.2f}")
 
-        self._update_label(self.kpi_policial, "total_policias", f"{k.get('total_tickets_policiales', 0):,d}")
-        self._update_label(self.kpi_policial, "tickets_unidad", f"{k.get('tickets_para_unidad', 0):,d}")
-        self._update_label(self.kpi_policial, "tickets_local", f"{k.get('tickets_local', 0):,d}")
-        self._update_label(self.kpi_policial, "monto_pendiente", f"S/ {k.get('monto_pendiente', 0.0):,.2f}")
+        if hasattr(self, "kpi_policial"):
+            self._update_label(self.kpi_policial, "total_policias", f"{k.get('total_tickets_policiales', 0):,d}")
+            self._update_label(self.kpi_policial, "tickets_unidad", f"{k.get('tickets_para_unidad', 0):,d}")
+            self._update_label(self.kpi_policial, "tickets_local", f"{k.get('tickets_local', 0):,d}")
+            self._update_label(self.kpi_policial, "monto_pendiente", f"S/ {k.get('monto_pendiente', 0.0):,.2f}")
 
-        self._update_label(self.kpi_vales, "vales_entregados", f"{k.get('vales_entregados', 0):,d}")
-        self._update_label(self.kpi_vales, "vales_canjeados", f"{k.get('vales_canjeados', 0):,d}")
-        self._update_label(self.kpi_vales, "saldo_vales", f"{k.get('saldo_vales', 0):,d}")
-        self._update_label(self.kpi_vales, "tickets_debidos", f"{k.get('tickets_debidos', 0):,d}")
+        if hasattr(self, "kpi_vales"):
+            self._update_label(self.kpi_vales, "vales_entregados", f"{k.get('vales_entregados', 0):,d}")
+            self._update_label(self.kpi_vales, "vales_canjeados", f"{k.get('vales_canjeados', 0):,d}")
+            self._update_label(self.kpi_vales, "saldo_vales", f"{k.get('saldo_vales', 0):,d}")
+            self._update_label(self.kpi_vales, "tickets_debidos", f"{k.get('tickets_debidos', 0):,d}")
 
         self._render_current_tab()
 
     def _update_label(self, card_dict: dict, key: str, text: str, color: Optional[str] = None):
+        if not card_dict:
+            return
         lbl = card_dict.get(key)
         if lbl:
             lbl.setText(text)
@@ -497,9 +501,9 @@ class DashboardView(QWidget):
             self._render_tab_finanzas(x, dias, s)
         elif idx == 2:
             self._render_tab_egresos(x, dias, s)
-        elif idx == 3:
+        elif idx == 3 and hasattr(self, "canvas_pol_stack"):
             self._render_tab_policial(x, dias, s)
-        elif idx == 4:
+        elif idx == 4 and hasattr(self, "canvas_val_flow"):
             self._render_tab_vales(x, dias, s)
 
     # --- Render Tab 1 ---
