@@ -213,6 +213,49 @@ QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus, QDateEdi
     background-color: #1F2937;
 }
 
+/* Fix QSpinBox & QDoubleSpinBox up/down buttons */
+QSpinBox, QDoubleSpinBox, QDateEdit {
+    padding-right: 28px;
+}
+
+QSpinBox::up-button, QDoubleSpinBox::up-button, QDateEdit::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 26px;
+    height: 16px;
+    border-left: 1px solid #374151;
+    border-bottom: 1px solid #374151;
+    border-top-right-radius: 5px;
+    background-color: #1E293B;
+}
+
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover, QDateEdit::up-button:hover {
+    background-color: #38BDF8;
+}
+
+QSpinBox::up-button:pressed, QDoubleSpinBox::up-button:pressed, QDateEdit::up-button:pressed {
+    background-color: #0284C7;
+}
+
+QSpinBox::down-button, QDoubleSpinBox::down-button, QDateEdit::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 26px;
+    height: 16px;
+    border-left: 1px solid #374151;
+    border-top: 1px solid #374151;
+    border-bottom-right-radius: 5px;
+    background-color: #1E293B;
+}
+
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover, QDateEdit::down-button:hover {
+    background-color: #38BDF8;
+}
+
+QSpinBox::down-button:pressed, QDoubleSpinBox::down-button:pressed, QDateEdit::down-button:pressed {
+    background-color: #0284C7;
+}
+
 QComboBox QAbstractItemView {
     background-color: #111827;
     color: #F9FAFB;

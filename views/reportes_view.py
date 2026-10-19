@@ -127,7 +127,8 @@ class ReportesView(QWidget):
             "Excel Files (*.xlsx)"
         )
         if filepath:
-            ok = self.exporter.export_excel(self.current_anio, self.current_mes, filepath)
+            local = getattr(self, "current_local", "restaurante")
+            ok = self.exporter.export_excel(self.current_anio, self.current_mes, filepath, local)
             if ok:
                 QMessageBox.information(self, "Exportación Exitosa", f"Reporte guardado en:\n{filepath}")
             else:

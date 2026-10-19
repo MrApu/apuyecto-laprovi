@@ -1,12 +1,14 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
-    QTableWidgetItem, QHeaderView, QSpinBox, QLineEdit, QMessageBox
+    QTableWidgetItem, QHeaderView, QSpinBox, QLineEdit, QMessageBox, QFrame
 )
 from PySide6.QtCore import Qt
-from typing import Optional, List
+from typing import Optional, List, Dict
 from models.vale import Vale
 from services.vale_service import ValeService
 from services.ticket_service import TicketService
+from views.components.toast import ToastManager
+from views.dialogs.vale_dialog import ValeRapidoDialog
 
 class ValesView(QWidget):
     def __init__(self, parent=None):
@@ -16,6 +18,7 @@ class ValesView(QWidget):
         self.current_anio = 2026
         self.current_mes = 9
         self.vales: List[Vale] = []
+        self.vales_map: Dict[str, Vale] = {}
         self._init_ui()
 
     def _init_ui(self):
@@ -25,21 +28,32 @@ class ValesView(QWidget):
 
         # Header
         header_box = QHBoxLayout()
-        self.lbl_title = QLabel("Control de Vales Policiales")
-        self.lbl_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #1F4E78;")
+        self.lbl_title = QLabel("🎟️ Control de Vales Policiales")
+        self.lbl_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #38BDF8;")
         header_box.addWidget(self.lbl_title)
         header_box.addStretch()
 
-        self.btn_guardar_todo = QPushButton("💾 Guardar Vales")
+        self.btn_guardar_todo = QPushButton("💾 Guardar Cambios en Lote")
         self.btn_guardar_todo.setProperty("class", "PrimaryBtn")
         self.btn_guardar_todo.clicked.connect(self._on_guardar_todo)
         header_box.addWidget(self.btn_guardar_todo)
 
         layout.addLayout(header_box)
 
-        # Rules Banner
-        info_banner = QLabel("ℹ️ <b>Regla:</b> SALDO = VALES ENTREGADOS - VALES CANJEADOS. (Los vales entregados no son venta hasta que se canjean).")
-        info_banner.setStyleSheet("background-color: #FFF3E0; color: #E65100; padding: 8px; border-radius: 4px; border: 1px solid #FFE0B2;")
+        # KPI Summary Cards (Tremor Style)
+        kpi_row = QHBoxLayout()
+        self.card_entregados = self._create_kpi_card("VALES ENTREGADOS", "0", "#F59E0B", "📤")
+        self.card_canjeados = self._create_kpi_card("VALES CANJEADOS", "0", "#10B981", "📥")
+        self.card_saldo = self._create_kpi_card("SALDO EN CIRCULACIÓN", "0", "#38BDF8", "⚖️")
+
+        kpi_row.addWidget(self.card_entregados)
+        kpi_row.addWidget(self.card_canjeados)
+        kpi_row.addWidget(self.card_saldo)
+        layout.addLayout(kpi_row)
+
+        # Rules & Hint Banner
+        info_banner = QLabel("💡 <b>Tip ágil:</b> Haga <b>doble clic</b> en cualquier fecha para abrir la ventana emergente con botones rápidos (+1, +5, +10) sin usar flechas.")
+        info_banner.setStyleSheet("background-color: #0F172A; color: #38BDF8; padding: 10px 14px; border-radius: 8px; border: 1px solid #1E293B;")
         layout.addWidget(info_banner)
 
         # Table
@@ -53,23 +67,55 @@ class ValesView(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.cellDoubleClicked.connect(self._on_cell_double_clicked)
         layout.addWidget(self.table)
 
-        # Resumen Bar
-        self.lbl_resumen = QLabel("Resumen del mes: Entregados = 0 | Canjeados = 0 | Saldo = 0")
-        self.lbl_resumen.setStyleSheet("font-size: 13px; font-weight: bold; color: #1F4E78; padding: 6px;")
-        layout.addWidget(self.lbl_resumen)
+    def _create_kpi_card(self, title: str, value: str, color: str, icon: str) -> QWidget:
+        w = QWidget()
+        w.setStyleSheet(f"""
+            QWidget {{
+                background-color: #0F172A;
+                border-left: 4px solid {color};
+                border-radius: 8px;
+            }}
+        """)
+        l = QVBoxLayout(w)
+        l.setContentsMargins(12, 8, 12, 8)
+        l.setSpacing(2)
+
+        top_h = QHBoxLayout()
+        lbl_t = QLabel(f"{icon} {title}")
+        lbl_t.setStyleSheet("color: #94A3B8; font-size: 11px; font-weight: 800; letter-spacing: 0.5px;")
+        top_h.addWidget(lbl_t)
+        top_h.addStretch()
+        l.addLayout(top_h)
+
+        lbl_v = QLabel(value)
+        lbl_v.setObjectName("val")
+        lbl_v.setStyleSheet(f"color: {color}; font-size: 18px; font-weight: 900;")
+        l.addWidget(lbl_v)
+        return w
+
+    def _update_kpi(self, card: QWidget, value: str, is_negative: bool = False):
+        lbl = card.findChild(QLabel, "val")
+        if lbl:
+            lbl.setText(value)
+            if is_negative:
+                lbl.setStyleSheet("color: #F43F5E; font-size: 18px; font-weight: 900;")
+            else:
+                lbl.setStyleSheet("color: #10B981; font-size: 18px; font-weight: 900;")
 
     def set_periodo(self, anio: int, mes: int):
         self.current_anio = anio
         self.current_mes = mes
-        self.lbl_title.setText(f"Control de Vales Policiales - {mes:02d}/{anio}")
+        self.lbl_title.setText(f"🎟️ Control de Vales Policiales — {mes:02d}/{anio}")
         self.cargar_datos()
 
     def cargar_datos(self):
-        # Ensure days exist
         diarios = self.ticket_service.get_calendario_mes(self.current_anio, self.current_mes)
         vales_existentes = {v.fecha: v for v in self.vale_service.get_by_mes(self.current_anio, self.current_mes)}
+        self.vales_map = vales_existentes
 
         self.table.setRowCount(len(diarios))
         self.widgets = {}
@@ -77,6 +123,7 @@ class ValesView(QWidget):
         for r, td in enumerate(diarios):
             fecha = td.fecha
             v = vales_existentes.get(fecha, Vale(fecha=fecha, vales_entregados=td.vales_policiales, vales_canjeados=0))
+            self.vales_map[fecha] = v
 
             self.table.setItem(r, 0, QTableWidgetItem(fecha))
 
@@ -97,7 +144,8 @@ class ValesView(QWidget):
             saldo_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             if v.saldo < 0:
                 saldo_item.setForeground(Qt.red)
-                saldo_item.setBackground(Qt.yellow)
+            else:
+                saldo_item.setForeground(Qt.green)
             self.table.setItem(r, 3, saldo_item)
 
             txt_obs = QLineEdit()
@@ -125,10 +173,8 @@ class ValesView(QWidget):
                 saldo_item.setText(str(saldo))
                 if saldo < 0:
                     saldo_item.setForeground(Qt.red)
-                    saldo_item.setBackground(Qt.yellow)
                 else:
-                    saldo_item.setForeground(Qt.black)
-                    saldo_item.setBackground(Qt.white)
+                    saldo_item.setForeground(Qt.green)
         self._recalcular_resumen()
 
     def _recalcular_resumen(self):
@@ -139,10 +185,61 @@ class ValesView(QWidget):
             tot_canj += w["canjeados"].value()
         saldo_tot = tot_ent - tot_canj
 
-        alerta = " ⚠️ [Alerta: Saldo Negativo]" if saldo_tot < 0 else ""
-        self.lbl_resumen.setText(
-            f"Resumen del mes: Vales Entregados = {tot_ent} | Vales Canjeados = {tot_canj} | Saldo = {saldo_tot}{alerta}"
+        lbl_ent = self.card_entregados.findChild(QLabel, "val")
+        if lbl_ent:
+            lbl_ent.setText(f"{tot_ent:,}")
+
+        lbl_canj = self.card_canjeados.findChild(QLabel, "val")
+        if lbl_canj:
+            lbl_canj.setText(f"{tot_canj:,}")
+
+        self._update_kpi(self.card_saldo, f"{saldo_tot:,}", is_negative=(saldo_tot < 0))
+
+    def _on_cell_double_clicked(self, row: int, col: int):
+        item_fecha = self.table.item(row, 0)
+        if not item_fecha:
+            return
+        fecha_str = item_fecha.text()
+        self._abrir_dialogo_vale(fecha_str)
+
+    def _abrir_dialogo_vale(self, fecha_str: str):
+        v = self.vales_map.get(fecha_str)
+        if not v:
+            v = Vale(fecha=fecha_str, vales_entregados=0, vales_canjeados=0)
+
+        # Check if there is next row
+        fechas = sorted(list(self.vales_map.keys()))
+        tiene_sig = False
+        if fecha_str in fechas:
+            idx = fechas.index(fecha_str)
+            tiene_sig = idx < len(fechas) - 1
+
+        def _on_save(val_mod: Vale):
+            self.vale_service.guardar_vale(
+                val_mod.fecha,
+                val_mod.vales_entregados,
+                val_mod.vales_canjeados,
+                val_mod.observacion
+            )
+            ToastManager.show_success(f"Vales de {val_mod.fecha} guardados (Saldo: {val_mod.saldo})", self)
+            self.cargar_datos()
+
+        dlg = ValeRapidoDialog(
+            vale=v,
+            parent=self,
+            on_save_callback=_on_save,
+            tiene_siguiente=tiene_sig
         )
+
+        dlg.siguiente_dia_solicitado.connect(self._abrir_siguiente_vale)
+        dlg.exec()
+
+    def _abrir_siguiente_vale(self, fecha_actual: str):
+        fechas = sorted(list(self.vales_map.keys()))
+        if fecha_actual in fechas:
+            idx = fechas.index(fecha_actual)
+            if idx < len(fechas) - 1:
+                self._abrir_dialogo_vale(fechas[idx + 1])
 
     def _on_guardar_todo(self):
         guardados = 0
@@ -161,4 +258,5 @@ class ValesView(QWidget):
         msg = f"Se guardaron correctamente los registros de vales de {guardados} días."
         if negativos > 0:
             msg += f"\n⚠️ Atención: {negativos} fecha(s) presentan saldo negativo."
-        QMessageBox.information(self, "Vales Guardados", msg)
+        ToastManager.show_success(msg, self)
+        self.cargar_datos()

@@ -53,12 +53,38 @@ class DiaTicketDialog(QDialog):
                 color: #F8FAFC;
                 font-size: 18px;
                 font-weight: bold;
-                padding: 6px 10px;
-                min-height: 36px;
+                padding: 6px 32px 6px 10px;
+                min-height: 38px;
             }
             QSpinBox:focus {
                 border: 1px solid #38BDF8;
                 background-color: #0F172A;
+            }
+            QSpinBox::up-button {
+                subcontrol-origin: border;
+                subcontrol-position: top right;
+                width: 28px;
+                height: 18px;
+                border-left: 1px solid #374151;
+                border-bottom: 1px solid #374151;
+                border-top-right-radius: 5px;
+                background-color: #1E293B;
+            }
+            QSpinBox::up-button:hover {
+                background-color: #38BDF8;
+            }
+            QSpinBox::down-button {
+                subcontrol-origin: border;
+                subcontrol-position: bottom right;
+                width: 28px;
+                height: 18px;
+                border-left: 1px solid #374151;
+                border-top: 1px solid #374151;
+                border-bottom-right-radius: 5px;
+                background-color: #1E293B;
+            }
+            QSpinBox::down-button:hover {
+                background-color: #38BDF8;
             }
             QLineEdit {
                 background-color: #1F2937;

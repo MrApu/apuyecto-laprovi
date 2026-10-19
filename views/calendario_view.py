@@ -16,8 +16,11 @@ from models.local import LOCAL_RESTAURANTE, LOCAL_FAST_FOOD, LOCAL_CONSOLIDADO, 
 from services.ticket_service import TicketService
 from services.venta_service import VentaService
 from services.mes_service import MesService
+from repositories.configuracion_repository import ConfiguracionRepository
 from views.components.toast import ToastManager
 from views.dialogs.dia_ticket_dialog import DiaTicketDialog
+from views.dialogs.configuracion_dialog import ConfiguracionPolicialDialog
+from views.dialogs.grafica_policial_dialog import GraficaPolicialDialog
 
 class DiaTicketGridCell(QFrame):
     """
@@ -198,6 +201,7 @@ class CalendarioView(QWidget):
         self.ticket_service = TicketService()
         self.venta_service = VentaService()
         self.mes_service = MesService()
+        self.config_repo = ConfiguracionRepository()
 
         self.current_anio = 2026
         self.current_mes = 9
@@ -264,6 +268,42 @@ class CalendarioView(QWidget):
         header.addWidget(self.btn_view_grid)
         header.addWidget(self.btn_view_list)
 
+        btn_config = QPushButton("⚙️ Configuración")
+        btn_config.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4F46E5, stop:1 #6366F1);
+                color: #FFFFFF;
+                padding: 6px 14px;
+                border-radius: 6px;
+                font-weight: bold;
+                border: 1px solid #818CF8;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4338CA, stop:1 #4F46E5);
+                border-color: #A5B4FC;
+            }
+        """)
+        btn_config.clicked.connect(self._abrir_configuracion)
+        header.addWidget(btn_config)
+
+        btn_grafica = QPushButton("📊 Gráfica")
+        btn_grafica.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0284C7, stop:1 #06B6D4);
+                color: #FFFFFF;
+                padding: 6px 14px;
+                border-radius: 6px;
+                font-weight: bold;
+                border: 1px solid #38BDF8;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0369A1, stop:1 #0284C7);
+                border-color: #7DD3FC;
+            }
+        """)
+        btn_grafica.clicked.connect(self._abrir_grafica)
+        header.addWidget(btn_grafica)
+
         btn_refresh = QPushButton("🔄 Actualizar")
         btn_refresh.setStyleSheet("background: #334155; color: #F8FAFC; padding: 6px 12px; border-radius: 6px; font-weight: bold;")
         btn_refresh.clicked.connect(self.cargar_datos)
@@ -278,12 +318,14 @@ class CalendarioView(QWidget):
         self.card_local = self._create_kpi_card("EN LOCAL", "0", "#10B981", "🍽️")
         self.card_vales = self._create_kpi_card("VALES POLICIALES", "0", "#A855F7", "🎟️")
         self.card_promedio = self._create_kpi_card("PROMEDIO DIARIO", "0.0 / día", "#F59E0B", "📊")
+        self.card_tarifa = self._create_kpi_card("TARIFA MENÚ", "S/ 15.00", "#6366F1", "⚙️")
 
         kpi_layout.addWidget(self.card_tot_tickets)
         kpi_layout.addWidget(self.card_unidad)
         kpi_layout.addWidget(self.card_local)
         kpi_layout.addWidget(self.card_vales)
         kpi_layout.addWidget(self.card_promedio)
+        kpi_layout.addWidget(self.card_tarifa)
         layout.addLayout(kpi_layout)
 
         # 3. Stacked Area for Views (0: Grid Calendar, 1: List Table)
@@ -480,12 +522,14 @@ class CalendarioView(QWidget):
         tot_v = sum(d.vales_policiales for d in self.diarios)
         dias_activos = sum(1 for d in self.diarios if d.total_policias > 0)
         promedio = (tot_p / dias_activos) if dias_activos > 0 else 0.0
+        tarifa_actual = self.config_repo.get_float("precio_menu_policial", 15.0)
 
         self._update_kpi(self.card_tot_tickets, f"{tot_p:,} tickets")
         self._update_kpi(self.card_unidad, f"{tot_u:,}")
         self._update_kpi(self.card_local, f"{tot_l:,}")
         self._update_kpi(self.card_vales, f"{tot_v:,}")
         self._update_kpi(self.card_promedio, f"{promedio:.1f} / día")
+        self._update_kpi(self.card_tarifa, f"S/ {tarifa_actual:.2f}")
 
         # 2. Render Calendar Grid
         self._render_grid_view()
@@ -665,3 +709,18 @@ class CalendarioView(QWidget):
 
         ToastManager.show_success(f"Se guardaron correctamente los {guardados} días del mes.", self)
         self.cargar_datos()
+
+    def _abrir_configuracion(self):
+        dlg = ConfiguracionPolicialDialog(parent=self)
+        if dlg.exec() == QDialog.Accepted:
+            self.cargar_datos()
+
+    def _abrir_grafica(self):
+        dlg = GraficaPolicialDialog(
+            diarios=self.diarios,
+            anio=self.current_anio,
+            mes=self.current_mes,
+            local_id=self.current_local,
+            parent=self
+        )
+        dlg.exec()

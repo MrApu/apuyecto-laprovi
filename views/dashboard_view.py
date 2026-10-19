@@ -138,9 +138,9 @@ class DashboardView(QWidget):
             }
         """)
 
-        # Tab 1: Resumen Ejecutivo
+        # Tab 1: Resumen Ejecutivo BI
         self.tab_ejecutivo = self._build_tab_ejecutivo()
-        self.tabs.addTab(self.tab_ejecutivo, "⚡ Resumen Ejecutivo")
+        self.tabs.addTab(self.tab_ejecutivo, "⚡ Resumen Ejecutivo BI")
 
         # Tab 2: Finanzas & Medios de Pago
         self.tab_finanzas = self._build_tab_finanzas()
@@ -149,14 +149,6 @@ class DashboardView(QWidget):
         # Tab 3: Egresos & Compras
         self.tab_egresos = self._build_tab_egresos()
         self.tabs.addTab(self.tab_egresos, "📉 Egresos & Compras")
-
-        # Tab 4: Operaciones Policiales & Cobranzas
-        self.tab_policial = self._build_tab_policial()
-        self.tabs.addTab(self.tab_policial, "👮 Gestión Policial & Cobranzas")
-
-        # Tab 5: Vales Policiales
-        self.tab_vales = self._build_tab_vales()
-        self.tabs.addTab(self.tab_vales, "🎫 Vales & Canjes")
 
         self.tabs.currentChanged.connect(self._on_tab_changed)
         main_layout.addWidget(self.tabs)
