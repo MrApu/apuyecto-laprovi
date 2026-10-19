@@ -21,17 +21,18 @@ class CompraSimpleDialog(QDialog):
     - Medio de pago
     - Categoría rápida
     """
-    def __init__(self, parent=None, anio: int = 2026, mes: int = 9, local_id: str = LOCAL_RESTAURANTE, compra: Optional[Compra] = None, dia: Optional[int] = None):
+    def __init__(self, parent=None, anio: int = 2026, mes: int = 9, local_id: str = LOCAL_RESTAURANTE, compra: Optional[Compra] = None, dia: Optional[int] = None, mostrar_fecha: bool = False):
         super().__init__(parent)
         self.anio = anio
         self.mes = mes
         self.dia = dia
+        self.mostrar_fecha = mostrar_fecha
         self.default_local = local_id if local_id in (LOCAL_RESTAURANTE, LOCAL_FAST_FOOD) else LOCAL_RESTAURANTE
         self.compra = compra
 
         title = "✏️ Editar Compra" if compra else "🛒 Registrar Compra / Insumo"
         self.setWindowTitle(title)
-        self.resize(500, 430)
+        self.resize(500, 420 if mostrar_fecha else 360)
         self.setStyleSheet("""
             QDialog {
                 background-color: #0A0A0A;
@@ -81,7 +82,7 @@ class CompraSimpleDialog(QDialog):
         form.setSpacing(12)
         form.setLabelAlignment(Qt.AlignRight)
 
-        # 1. Fecha
+        # 1. Fecha (Solo se muestra en la sección de egresos o cuando mostrar_fecha=True)
         now = datetime.now()
         if self.dia and 1 <= self.dia <= 31:
             initial_day = self.dia
@@ -89,7 +90,8 @@ class CompraSimpleDialog(QDialog):
             initial_day = now.day if (now.year == self.anio and now.month == self.mes) else 1
         self.dt_fecha = QDateEdit(QDate(self.anio, self.mes, initial_day))
         self.dt_fecha.setCalendarPopup(True)
-        form.addRow("📅 Fecha:", self.dt_fecha)
+        if self.mostrar_fecha:
+            form.addRow("📅 Fecha:", self.dt_fecha)
 
         # 2. Local
         self.cmb_local = QComboBox()
@@ -101,7 +103,7 @@ class CompraSimpleDialog(QDialog):
 
         # 3. Monto Total Gastado (S/) - Destacado
         self.spn_monto = QDoubleSpinBox()
-        self.spn_monto.setRange(0.01, 9999999.0)
+        self.spn_monto.setRange(0.0, 9999999.0)
         self.spn_monto.setDecimals(2)
         self.spn_monto.setPrefix("S/ ")
         self.spn_monto.setValue(0.0)

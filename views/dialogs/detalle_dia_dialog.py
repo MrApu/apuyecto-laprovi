@@ -23,7 +23,12 @@ from views.dialogs.policia_dialog import PoliciaDialog
 
 
 class MarcarPoliciaDiaDialog(QDialog):
-    """Diálogo modal para buscar y marcar a un efectivo policial en el día seleccionado."""
+    """
+    Diálogo modal para buscar y marcar a un efectivo policial en el día:
+    - Búsqueda / filtro dinámico sin posibilidad de alterar datos accidentalmente.
+    - Campos del efectivo 100% de solo lectura (no se puede cambiar nada).
+    - Botón dedicado '✏️ Editar Datos' para abrir la ventana formal de edición sólo si se desea modificarlo.
+    """
     def __init__(self, mes_id: int, dia: int, local_id: str, parent=None):
         super().__init__(parent)
         self.mes_id = mes_id
@@ -31,10 +36,11 @@ class MarcarPoliciaDiaDialog(QDialog):
         self.local_id = local_id if local_id != LOCAL_CONSOLIDADO else LOCAL_RESTAURANTE
         self.policia_service = PoliciaService()
         self.ticket_service = TicketService()
-        self.policias_list = []
+        self.policias_list: List[Policia] = []
+        self.policias_dict: Dict[int, Policia] = {}
 
-        self.setWindowTitle(f"👮 Marcar Efectivo PNP — Día {self.dia}")
-        self.resize(460, 260)
+        self.setWindowTitle(f"👮 Marcar Efectivo PNP — Día {self.dia:02d}")
+        self.resize(500, 390)
         self.setStyleSheet("""
             QDialog {
                 background-color: #0A0A0A;
@@ -45,17 +51,28 @@ class MarcarPoliciaDiaDialog(QDialog):
                 font-size: 12px;
                 font-weight: 700;
             }
-            QLineEdit, QComboBox {
+            QLineEdit {
                 background-color: #141414;
                 color: #FFFFFF;
                 border: 1px solid #27272A;
                 border-radius: 6px;
-                padding: 6px 10px;
+                padding: 7px 10px;
                 font-size: 13px;
             }
-            QLineEdit:focus, QComboBox:focus {
+            QLineEdit:focus {
                 border: 1px solid #DC2626;
                 background-color: #18181B;
+            }
+            QComboBox {
+                background-color: #141414;
+                color: #FFFFFF;
+                border: 1px solid #27272A;
+                border-radius: 6px;
+                padding: 7px 10px;
+                font-size: 13px;
+            }
+            QComboBox:focus {
+                border: 1px solid #DC2626;
             }
         """)
         self._init_ui()
@@ -71,22 +88,75 @@ class MarcarPoliciaDiaDialog(QDialog):
         lbl_head.setStyleSheet("font-size: 15px; font-weight: 900; color: #FFFFFF;")
         layout.addWidget(lbl_head)
 
-        lbl_desc = QLabel("Seleccione o busque al efectivo policial que consumió ticket en esta fecha:")
+        lbl_desc = QLabel("Busque y seleccione el efectivo policial. Los datos son protegidos (solo lectura):")
         lbl_desc.setStyleSheet("color: #A1A1AA; font-size: 11px;")
         layout.addWidget(lbl_desc)
 
-        # Combo con buscador
-        form = QFormLayout()
-        form.setSpacing(10)
+        # Search filter input
+        self.txt_buscar = QLineEdit()
+        self.txt_buscar.setPlaceholderText("🔍 Filtrar por código, apellidos o nombres...")
+        self.txt_buscar.textChanged.connect(self._filtrar_policias)
+        layout.addWidget(self.txt_buscar)
 
+        # Combo selector (Strictly non-editable dropdown)
         self.cmb_policia = QComboBox()
-        self.cmb_policia.setEditable(True)
-        self.cmb_policia.setInsertPolicy(QComboBox.NoInsert)
-        form.addRow("👮 Efectivo:", self.cmb_policia)
-        layout.addLayout(form)
+        self.cmb_policia.setEditable(False)
+        self.cmb_policia.currentIndexChanged.connect(self._on_policia_selection_changed)
+        layout.addWidget(self.cmb_policia)
 
-        # Botón para crear nuevo si no existe en el padrón
-        btn_nuevo = QPushButton("➕ ¿No está en la lista? Crear Nuevo Policía")
+        # Read-Only Details Card
+        self.card_info = QFrame()
+        self.card_info.setStyleSheet("background-color: #141414; border: 1px solid #262626; border-left: 4px solid #DC2626; border-radius: 8px; padding: 10px;")
+        card_layout = QVBoxLayout(self.card_info)
+        card_layout.setSpacing(5)
+
+        self.lbl_det_codigo = QLabel("Código: -")
+        self.lbl_det_codigo.setStyleSheet("color: #FFFFFF; font-weight: 900; font-size: 13px;")
+        card_layout.addWidget(self.lbl_det_codigo)
+
+        self.lbl_det_nombre = QLabel("Efectivo: -")
+        self.lbl_det_nombre.setStyleSheet("color: #E4E4E7; font-weight: 700; font-size: 12px;")
+        card_layout.addWidget(self.lbl_det_nombre)
+
+        h_tags = QHBoxLayout()
+        self.lbl_det_area = QLabel("Área: -")
+        self.lbl_det_area.setStyleSheet("background: #18181B; color: #EF4444; border: 1px solid #7F1D1D; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 800;")
+        h_tags.addWidget(self.lbl_det_area)
+
+        self.lbl_det_sa = QLabel("SA-PNP: -")
+        self.lbl_det_sa.setStyleSheet("color: #A1A1AA; font-size: 11px;")
+        h_tags.addWidget(self.lbl_det_sa)
+        h_tags.addStretch()
+        card_layout.addLayout(h_tags)
+
+        # Botón para editar formalmente al policía si se requiere modificarlo
+        btn_editar_pol = QPushButton("✏️ Editar Datos de este Efectivo")
+        btn_editar_pol.setCursor(Qt.PointingHandCursor)
+        btn_editar_pol.setStyleSheet("""
+            QPushButton {
+                background-color: #18181B;
+                color: #A1A1AA;
+                border: 1px solid #27272A;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: 700;
+                padding: 4px 8px;
+                text-align: center;
+            }
+            QPushButton:hover {
+                background-color: #27272A;
+                color: #FFFFFF;
+                border: 1px solid #DC2626;
+            }
+        """)
+        btn_editar_pol.clicked.connect(self._editar_policia_actual)
+        card_layout.addWidget(btn_editar_pol)
+
+        layout.addWidget(self.card_info)
+
+        # Botón para registrar nuevo policía en el padrón
+        btn_nuevo = QPushButton("➕ ¿No está en la lista? Registrar Nuevo Policía en el Padrón")
+        btn_nuevo.setCursor(Qt.PointingHandCursor)
         btn_nuevo.setStyleSheet("""
             QPushButton {
                 background-color: transparent;
@@ -129,7 +199,7 @@ class MarcarPoliciaDiaDialog(QDialog):
         btn_cancel.clicked.connect(self.reject)
         btn_box.addWidget(btn_cancel)
 
-        self.btn_marcar = QPushButton("✅ Marcar Ticket Asistencia")
+        self.btn_marcar = QPushButton("✅ Asignar Ticket en este Día")
         self.btn_marcar.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #991B1B, stop:1 #DC2626);
@@ -150,12 +220,64 @@ class MarcarPoliciaDiaDialog(QDialog):
 
         layout.addLayout(btn_box)
 
-    def _cargar_policias(self):
-        self.cmb_policia.clear()
+    def _cargar_policias(self, select_id: Optional[int] = None):
         self.policias_list = self.policia_service.get_all(solo_activos=False)
+        self.policias_dict = {p.id: p for p in self.policias_list}
+        self._filtrar_policias(select_id=select_id)
+
+    def _filtrar_policias(self, select_id: Optional[int] = None):
+        query = self.txt_buscar.text().strip().upper() if hasattr(self, "txt_buscar") else ""
+        self.cmb_policia.blockSignals(True)
+        self.cmb_policia.clear()
+
         for p in self.policias_list:
-            texto = f"[{p.codigo}] {p.apellidos} {p.nombres} ({p.area})"
-            self.cmb_policia.addItem(texto, p.id)
+            display_text = f"[{p.codigo}] {p.apellidos} {p.nombres} — {p.area}"
+            if not query or query in display_text.upper():
+                self.cmb_policia.addItem(display_text, p.id)
+
+        self.cmb_policia.blockSignals(False)
+
+        if select_id:
+            idx = self.cmb_policia.findData(select_id)
+            if idx >= 0:
+                self.cmb_policia.setCurrentIndex(idx)
+        elif self.cmb_policia.count() > 0:
+            self.cmb_policia.setCurrentIndex(0)
+
+        self._on_policia_selection_changed()
+
+    def _on_policia_selection_changed(self):
+        p_id = self.cmb_policia.currentData()
+        p = self.policias_dict.get(p_id) if p_id else None
+        if p:
+            self.lbl_det_codigo.setText(f"Código PNP: {p.codigo}")
+            self.lbl_det_nombre.setText(f"Efectivo: {p.apellidos} {p.nombres}")
+            self.lbl_det_area.setText(f"Área: {p.area}")
+            self.lbl_det_sa.setText(f"SA-PNP: {p.sa_pnp or 'N/A'}")
+            self.card_info.setVisible(True)
+            self.btn_marcar.setEnabled(True)
+        else:
+            self.lbl_det_codigo.setText("Sin efectivo seleccionado")
+            self.lbl_det_nombre.setText("")
+            self.lbl_det_area.setText("")
+            self.lbl_det_sa.setText("")
+            self.card_info.setVisible(False)
+            self.btn_marcar.setEnabled(False)
+
+    def _editar_policia_actual(self):
+        p_id = self.cmb_policia.currentData()
+        p = self.policias_dict.get(p_id) if p_id else None
+        if not p:
+            return
+        dlg = PoliciaDialog(self, policia=p)
+        if dlg.exec() == QDialog.Accepted:
+            mod_p = dlg.get_policia()
+            ok, msg = self.policia_service.actualizar_policia(mod_p)
+            if ok:
+                ToastManager.show_success(f"Efectivo {mod_p.codigo} actualizado", self)
+                self._cargar_policias(select_id=mod_p.id)
+            else:
+                QMessageBox.warning(self, "Error", msg)
 
     def _crear_nuevo_policia(self):
         dlg = PoliciaDialog(self)
@@ -164,10 +286,7 @@ class MarcarPoliciaDiaDialog(QDialog):
             ok, msg, nuevo_id = self.policia_service.crear_policia(p)
             if ok:
                 ToastManager.show_success("Policía agregado al padrón", self)
-                self._cargar_policias()
-                idx = self.cmb_policia.findData(nuevo_id)
-                if idx >= 0:
-                    self.cmb_policia.setCurrentIndex(idx)
+                self._cargar_policias(select_id=nuevo_id)
             else:
                 QMessageBox.warning(self, "Error", msg)
 
@@ -362,6 +481,7 @@ class DetalleDiaDialog(QDialog):
         self.mes_service = MesService()
         self.ticket_service = TicketService()
         self.egreso_service = EgresoService()
+        self.policia_service = PoliciaService()
         self.sede_name = LOCAL_NAMES.get(local_id, local_id.upper())
 
         self.setWindowTitle(f"🔍 Bitácora del Día — {self.fecha_str} ({self.sede_name})")
@@ -505,11 +625,12 @@ class DetalleDiaDialog(QDialog):
         t1_layout.addLayout(t1_bar)
 
         self.table_policias = QTableWidget()
+        self.table_policias.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table_policias.setColumnCount(5)
         self.table_policias.setHorizontalHeaderLabels(["Código", "Apellidos y Nombres", "Área / Unidad", "SA-PNP", "Acción"])
         self.table_policias.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.table_policias.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
-        self.table_policias.setColumnWidth(4, 90)
+        self.table_policias.setColumnWidth(4, 95)
         t1_layout.addWidget(self.table_policias)
 
         self.tabs.addTab(tab1_widget, "👮 Efectivos PNP")
@@ -548,11 +669,12 @@ class DetalleDiaDialog(QDialog):
         t2_layout.addLayout(t2_bar)
 
         self.table_compras = QTableWidget()
+        self.table_compras.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table_compras.setColumnCount(5)
         self.table_compras.setHorizontalHeaderLabels(["Insumo / Descripción", "Categoría", "Medio Pago", "Total (S/)", "Acción"])
         self.table_compras.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table_compras.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
-        self.table_compras.setColumnWidth(4, 85)
+        self.table_compras.setColumnWidth(4, 95)
         t2_layout.addWidget(self.table_compras)
 
         self.tabs.addTab(tab2_widget, "🛒 Compras e Insumos")
@@ -591,6 +713,7 @@ class DetalleDiaDialog(QDialog):
         t3_layout.addLayout(t3_bar)
 
         self.table_personal = QTableWidget()
+        self.table_personal.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table_personal.setColumnCount(6)
         self.table_personal.setHorizontalHeaderLabels(["Personal / Trabajador", "Cargo", "Concepto / Turno", "Medio Pago", "Monto (S/)", "Acción"])
         self.table_personal.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
@@ -664,26 +787,54 @@ class DetalleDiaDialog(QDialog):
             self.table_policias.setItem(r, 2, QTableWidgetItem(p["area"] or "-"))
             self.table_policias.setItem(r, 3, QTableWidgetItem(p["sa_pnp"] or "-"))
 
-            # Botón desmarcar
-            btn_del = QPushButton("🗑️")
-            btn_del.setToolTip("Desmarcar efectivo en este día")
-            btn_del.setStyleSheet("""
+            # Botones de acción: Editar policía formalmente o desmarcar del día
+            action_pol = QWidget()
+            layout_pol = QHBoxLayout(action_pol)
+            layout_pol.setContentsMargins(2, 2, 2, 2)
+            layout_pol.setSpacing(4)
+
+            btn_edit_pol = QPushButton("✏️")
+            btn_edit_pol.setToolTip("Editar datos de este efectivo policial")
+            btn_edit_pol.setCursor(Qt.PointingHandCursor)
+            btn_edit_pol.setStyleSheet("""
+                QPushButton {
+                    background-color: #18181B;
+                    color: #A1A1AA;
+                    border: 1px solid #27272A;
+                    border-radius: 4px;
+                    font-size: 11px;
+                    padding: 2px 5px;
+                }
+                QPushButton:hover {
+                    background-color: #27272A;
+                    color: #FFFFFF;
+                    border: 1px solid #DC2626;
+                }
+            """)
+            p_id = p["id"]
+            btn_edit_pol.clicked.connect(lambda ch, pid=p_id: self._on_editar_policia(pid))
+            layout_pol.addWidget(btn_edit_pol)
+
+            btn_del_pol = QPushButton("🗑️")
+            btn_del_pol.setToolTip("Desmarcar efectivo en este día")
+            btn_del_pol.setCursor(Qt.PointingHandCursor)
+            btn_del_pol.setStyleSheet("""
                 QPushButton {
                     background-color: #271214;
                     color: #EF4444;
                     border: 1px solid #7F1D1D;
                     border-radius: 4px;
                     font-size: 11px;
-                    padding: 2px;
+                    padding: 2px 5px;
                 }
                 QPushButton:hover {
                     background-color: #DC2626;
                     color: #FFFFFF;
                 }
             """)
-            p_id = p["id"]
-            btn_del.clicked.connect(lambda ch, pid=p_id: self._on_desmarcar_policia(pid))
-            self.table_policias.setCellWidget(r, 4, btn_del)
+            btn_del_pol.clicked.connect(lambda ch, pid=p_id: self._on_desmarcar_policia(pid))
+            layout_pol.addWidget(btn_del_pol)
+            self.table_policias.setCellWidget(r, 4, action_pol)
 
         self.lbl_cnt_pol.setText(f"Total Efectivos Marcados: {len(pol_rows)}")
 
@@ -702,25 +853,54 @@ class DetalleDiaDialog(QDialog):
             self.table_compras.setItem(r, 2, QTableWidgetItem(c["medio_pago"] or "EFECTIVO"))
             self.table_compras.setItem(r, 3, QTableWidgetItem(f"S/ {monto:,.2f}"))
 
-            btn_del = QPushButton("🗑️")
-            btn_del.setToolTip("Eliminar esta compra")
-            btn_del.setStyleSheet("""
+            # Botones de acción: Editar compra o eliminar
+            action_comp = QWidget()
+            layout_comp = QHBoxLayout(action_comp)
+            layout_comp.setContentsMargins(2, 2, 2, 2)
+            layout_comp.setSpacing(4)
+
+            btn_edit_c = QPushButton("✏️")
+            btn_edit_c.setToolTip("Editar datos de esta compra")
+            btn_edit_c.setCursor(Qt.PointingHandCursor)
+            btn_edit_c.setStyleSheet("""
+                QPushButton {
+                    background-color: #18181B;
+                    color: #A1A1AA;
+                    border: 1px solid #27272A;
+                    border-radius: 4px;
+                    font-size: 11px;
+                    padding: 2px 5px;
+                }
+                QPushButton:hover {
+                    background-color: #27272A;
+                    color: #FFFFFF;
+                    border: 1px solid #DC2626;
+                }
+            """)
+            c_id = c["id"]
+            btn_edit_c.clicked.connect(lambda ch, cid=c_id: self._on_editar_compra(cid))
+            layout_comp.addWidget(btn_edit_c)
+
+            btn_del_c = QPushButton("🗑️")
+            btn_del_c.setToolTip("Eliminar esta compra")
+            btn_del_c.setCursor(Qt.PointingHandCursor)
+            btn_del_c.setStyleSheet("""
                 QPushButton {
                     background-color: #271214;
                     color: #EF4444;
                     border: 1px solid #7F1D1D;
                     border-radius: 4px;
                     font-size: 11px;
-                    padding: 2px;
+                    padding: 2px 5px;
                 }
                 QPushButton:hover {
                     background-color: #DC2626;
                     color: #FFFFFF;
                 }
             """)
-            c_id = c["id"]
-            btn_del.clicked.connect(lambda ch, cid=c_id: self._on_eliminar_compra(cid))
-            self.table_compras.setCellWidget(r, 4, btn_del)
+            btn_del_c.clicked.connect(lambda ch, cid=c_id: self._on_eliminar_compra(cid))
+            layout_comp.addWidget(btn_del_c)
+            self.table_compras.setCellWidget(r, 4, action_comp)
 
         self.lbl_cnt_comp.setText(f"Total Compras: S/ {total_compras:,.2f}")
 
@@ -815,6 +995,20 @@ class DetalleDiaDialog(QDialog):
             ToastManager.show_info("Efectivo desmarcado", self)
             self._cargar_datos()
 
+    def _on_editar_policia(self, policia_id: int):
+        p = self.policia_service.get_by_id(policia_id)
+        if not p:
+            return
+        dlg = PoliciaDialog(self, policia=p)
+        if dlg.exec() == QDialog.Accepted:
+            mod_p = dlg.get_policia()
+            ok, msg = self.policia_service.actualizar_policia(mod_p)
+            if ok:
+                ToastManager.show_success(f"Efectivo {mod_p.codigo} actualizado", self)
+                self._cargar_datos()
+            else:
+                QMessageBox.warning(self, "Error", msg)
+
     # ---------------------------------------------
     # Acciones de Compras e Insumos
     # ---------------------------------------------
@@ -826,6 +1020,20 @@ class DetalleDiaDialog(QDialog):
             ok, msg, _ = self.egreso_service.registrar_compra(compra)
             if ok:
                 ToastManager.show_success("Compra registrada correctamente", self)
+                self._cargar_datos()
+            else:
+                QMessageBox.warning(self, "Error", msg)
+
+    def _on_editar_compra(self, compra_id: int):
+        compra = self.egreso_service.get_compra_by_id(compra_id)
+        if not compra:
+            return
+        dlg = CompraSimpleDialog(parent=self, compra=compra, mostrar_fecha=False)
+        if dlg.exec() == QDialog.Accepted:
+            mod_compra = dlg.get_compra()
+            ok, msg = self.egreso_service.actualizar_compra(mod_compra)
+            if ok:
+                ToastManager.show_success("Compra actualizada", self)
                 self._cargar_datos()
             else:
                 QMessageBox.warning(self, "Error", msg)

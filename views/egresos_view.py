@@ -259,7 +259,7 @@ class EgresosView(QWidget):
 
     # --- Add/Del Dialog Handlers ---
     def _add_compra(self):
-        dlg = CompraSimpleDialog(self, anio=self.current_year, mes=self.current_month, local_id=self.current_local)
+        dlg = CompraSimpleDialog(self, anio=self.current_year, mes=self.current_month, local_id=self.current_local, mostrar_fecha=True)
         if dlg.exec() == QDialog.Accepted:
             compra = dlg.get_compra()
             ok, msg, _ = self.egreso_service.registrar_compra(compra)
@@ -277,7 +277,7 @@ class EgresosView(QWidget):
         compra = self.egreso_service.get_compra_by_id(cid)
         if not compra:
             return
-        dlg = CompraSimpleDialog(self, compra=compra)
+        dlg = CompraSimpleDialog(self, compra=compra, mostrar_fecha=True)
         if dlg.exec() == QDialog.Accepted:
             compra_mod = dlg.get_compra()
             ok, msg = self.egreso_service.actualizar_compra(compra_mod)
