@@ -146,7 +146,51 @@ class EgresoService:
         )
         return True, "Gasto eliminado."
 
+    def get_gasto_by_id(self, gasto_id: int) -> Optional[Gasto]:
+        return self.gasto_repo.get_by_id(gasto_id)
+
+    def actualizar_gasto(self, gasto: Gasto, usuario: str = "USUARIO") -> Tuple[bool, str]:
+        if not gasto.id:
+            return False, "ID de gasto no especificado."
+        if gasto.monto < 0:
+            return False, "El monto del gasto no puede ser negativo."
+        if not gasto.descripcion.strip():
+            return False, "La descripción del gasto es obligatoria."
+
+        self.gasto_repo.update(gasto)
+        self.audit_repo.registrar(
+            accion="ACTUALIZAR_GASTO",
+            entidad="gastos",
+            entidad_id=str(gasto.id),
+            local_id=gasto.local_id,
+            detalles=f"Actualizado gasto ID {gasto.id} [{gasto.categoria}] {gasto.descripcion}: S/ {gasto.monto:.2f}",
+            usuario=usuario
+        )
+        return True, "Gasto actualizado exitosamente."
+
     # --- Pagos Personal ---
+    def get_pago_personal_by_id(self, pago_id: int) -> Optional[PagoPersonal]:
+        return self.personal_repo.get_by_id(pago_id)
+
+    def actualizar_pago_personal(self, pago: PagoPersonal, usuario: str = "USUARIO") -> Tuple[bool, str]:
+        if not pago.id:
+            return False, "ID de pago de personal no especificado."
+        if pago.monto < 0:
+            return False, "El monto del pago al personal no puede ser negativo."
+        if not pago.trabajador.strip():
+            return False, "El nombre del trabajador es obligatorio."
+
+        self.personal_repo.update(pago)
+        self.audit_repo.registrar(
+            accion="ACTUALIZAR_PAGO_PERSONAL",
+            entidad="pagos_personal",
+            entidad_id=str(pago.id),
+            local_id=pago.local_id,
+            detalles=f"Actualizado pago personal ID {pago.id} a {pago.trabajador} [{pago.concepto}]: S/ {pago.monto:.2f}",
+            usuario=usuario
+        )
+        return True, "Pago de personal actualizado exitosamente."
+
     def registrar_pago_personal(self, pago: PagoPersonal, usuario: str = "USUARIO") -> Tuple[bool, str, Optional[int]]:
         if pago.monto < 0:
             return False, "El monto del pago al personal no puede ser negativo.", None

@@ -434,9 +434,9 @@ class CalendarioView(QWidget):
         l.addLayout(tb)
 
         self.table = QTableWidget()
-        self.table.setColumnCount(7)
+        self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels([
-            "Fecha", "Día", "Para Unidad (*)", "Local (*)", "Total Policías (Calc)", "Vales Policiales", "Observación"
+            "Fecha", "Día", "Para Unidad (*)", "Local (*)", "Total Policías (Calc)", "Vales Policiales", "Observación", "Acción"
         ])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
@@ -445,7 +445,10 @@ class CalendarioView(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.Fixed)
+        self.table.setColumnWidth(7, 95)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.cellDoubleClicked.connect(self._on_table_cell_double_clicked)
         l.addWidget(self.table)
 
@@ -613,6 +616,29 @@ class CalendarioView(QWidget):
             if td.observacion:
                 txt_obs.setText(td.observacion)
             self.table.setCellWidget(r, 6, txt_obs)
+
+            # Botón Editar dedicado (CRUD protegido contra clicks accidentales)
+            btn_edit_dia = QPushButton("✏️ Editar")
+            btn_edit_dia.setCursor(Qt.PointingHandCursor)
+            btn_edit_dia.setStyleSheet("""
+                QPushButton {
+                    background-color: #18181B;
+                    color: #FFFFFF;
+                    border: 1px solid #27272A;
+                    border-radius: 4px;
+                    font-size: 11px;
+                    font-weight: 700;
+                    padding: 3px 8px;
+                }
+                QPushButton:hover {
+                    background-color: #27272A;
+                    color: #EF4444;
+                    border: 1px solid #DC2626;
+                }
+            """)
+            f_val = td.fecha
+            btn_edit_dia.clicked.connect(lambda ch, f=f_val: self._abrir_dialogo_edicion(f))
+            self.table.setCellWidget(r, 7, btn_edit_dia)
 
             self.spin_widgets[r] = {
                 "unidad": sb_unidad,

@@ -20,6 +20,7 @@ def temp_db():
     db_path = os.path.join(temp_dir, "test_features.db")
     db_mgr = DatabaseManager(db_path)
     yield db_mgr
+    DatabaseManager._instance = None
     if os.path.exists(db_path):
         try:
             os.remove(db_path)

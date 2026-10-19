@@ -59,6 +59,8 @@ class ReportesView(QWidget):
         self.table_preview.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.table_preview.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.table_preview.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.table_preview.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table_preview.setEditTriggers(QTableWidget.NoEditTriggers)
         layout.addWidget(self.table_preview)
 
     def set_local(self, local_id: str):

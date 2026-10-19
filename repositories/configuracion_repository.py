@@ -10,6 +10,20 @@ class ConfiguracionRepository:
         rows = self.db.execute_query("SELECT valor FROM configuracion WHERE clave = ?", (clave,))
         return rows[0]["valor"] if rows else default
 
+    def get_all(self) -> List[Configuracion]:
+        rows = self.db.execute_query("SELECT id, clave, valor, tipo_dato, descripcion, fecha_actualizacion FROM configuracion ORDER BY id ASC")
+        return [
+            Configuracion(
+                id=r["id"],
+                clave=r["clave"],
+                valor=r["valor"],
+                tipo_dato=r["tipo_dato"],
+                descripcion=r["descripcion"],
+                fecha_actualizacion=r["fecha_actualizacion"]
+            )
+            for r in rows
+        ]
+
     def get_float(self, clave: str, default: float = 0.0) -> float:
         val = self.get_valor(clave, str(default))
         try:

@@ -120,12 +120,17 @@ class EgresosView(QWidget):
         btn_add.clicked.connect(self._add_compra)
         toolbar.addWidget(btn_add)
 
+        btn_edit = QPushButton("✏️ Editar Compra")
+        btn_edit.setStyleSheet("background: #18181B; color: #FFFFFF; border: 1px solid #27272A; font-weight: bold; padding: 6px 14px; border-radius: 6px;")
+        btn_edit.clicked.connect(self._edit_compra)
+        toolbar.addWidget(btn_edit)
+
         btn_del = QPushButton("🗑️ Eliminar Compra")
         btn_del.setStyleSheet("background: #334155; color: #f87171; font-weight: bold; padding: 6px 12px; border-radius: 6px;")
         btn_del.clicked.connect(self._del_compra)
         toolbar.addWidget(btn_del)
         
-        lbl_hint = QLabel("💡 Doble clic en cualquier compra para editar el monto u observación.")
+        lbl_hint = QLabel("💡 Seleccione una compra y use 'Editar Compra' (o doble clic) para modificarla.")
         lbl_hint.setStyleSheet("color: #64748b; font-size: 11px; margin-left: 8px;")
         toolbar.addWidget(lbl_hint)
         
@@ -141,6 +146,7 @@ class EgresosView(QWidget):
         self.tbl_compras.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.tbl_compras.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
         self.tbl_compras.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tbl_compras.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tbl_compras.cellDoubleClicked.connect(self._on_compra_double_clicked)
         l.addWidget(self.tbl_compras)
         return w
@@ -154,6 +160,11 @@ class EgresosView(QWidget):
         btn_add.clicked.connect(self._add_gasto)
         toolbar.addWidget(btn_add)
 
+        btn_edit = QPushButton("✏️ Editar Gasto")
+        btn_edit.setStyleSheet("background: #18181B; color: #FFFFFF; border: 1px solid #27272A; font-weight: bold; padding: 6px 12px; border-radius: 4px;")
+        btn_edit.clicked.connect(self._edit_gasto)
+        toolbar.addWidget(btn_edit)
+
         btn_del = QPushButton("🗑️ Eliminar Gasto")
         btn_del.clicked.connect(self._del_gasto)
         toolbar.addWidget(btn_del)
@@ -165,6 +176,8 @@ class EgresosView(QWidget):
         self.tbl_gastos.setHorizontalHeaderLabels(["ID", "Fecha", "Local", "Categoría", "Descripción", "Monto", "Medio Pago"])
         self.tbl_gastos.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.tbl_gastos.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tbl_gastos.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tbl_gastos.cellDoubleClicked.connect(lambda r, c: self._edit_gasto())
         l.addWidget(self.tbl_gastos)
         return w
 
@@ -177,6 +190,11 @@ class EgresosView(QWidget):
         btn_add.clicked.connect(self._add_personal)
         toolbar.addWidget(btn_add)
 
+        btn_edit = QPushButton("✏️ Editar Pago")
+        btn_edit.setStyleSheet("background: #18181B; color: #FFFFFF; border: 1px solid #27272A; font-weight: bold; padding: 6px 12px; border-radius: 4px;")
+        btn_edit.clicked.connect(self._edit_personal)
+        toolbar.addWidget(btn_edit)
+
         btn_del = QPushButton("🗑️ Eliminar Pago")
         btn_del.clicked.connect(self._del_personal)
         toolbar.addWidget(btn_del)
@@ -188,6 +206,8 @@ class EgresosView(QWidget):
         self.tbl_personal.setHorizontalHeaderLabels(["ID", "Fecha", "Local", "Trabajador", "Cargo", "Concepto", "Monto", "Medio Pago"])
         self.tbl_personal.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.tbl_personal.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tbl_personal.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tbl_personal.cellDoubleClicked.connect(lambda r, c: self._edit_personal())
         l.addWidget(self.tbl_personal)
         return w
 
@@ -287,6 +307,13 @@ class EgresosView(QWidget):
                 QMessageBox.warning(self, "Error", msg)
             self.refresh_data()
 
+    def _edit_compra(self):
+        row = self.tbl_compras.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Atención", "Seleccione una compra de la lista para editar.")
+            return
+        self._on_compra_double_clicked(row, 0)
+
     def _del_compra(self):
         row = self.tbl_compras.currentRow()
         if row < 0:
@@ -348,6 +375,79 @@ class EgresosView(QWidget):
             self.egreso_service.registrar_gasto(g)
             self.refresh_data()
 
+    def _edit_gasto(self):
+        row = self.tbl_gastos.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Atención", "Seleccione un gasto de la lista para editar.")
+            return
+        item = self.tbl_gastos.item(row, 0)
+        if not item or not item.text():
+            return
+        gid = int(item.text())
+        gasto = self.egreso_service.get_gasto_by_id(gid)
+        if not gasto:
+            return
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"✏️ Editar Gasto #{gasto.id}")
+        layout = QFormLayout(dlg)
+
+        try:
+            dt = datetime.strptime(gasto.fecha, "%Y-%m-%d")
+            dt_edit = QDateEdit(QDate(dt.year, dt.month, dt.day))
+        except Exception:
+            dt_edit = QDateEdit(QDate(self.current_year, self.current_month, 1))
+        dt_edit.setCalendarPopup(True)
+        layout.addRow("Fecha:", dt_edit)
+
+        combo_loc = QComboBox()
+        combo_loc.addItem("LA PROVINCIAL RESTAURANTE", LOCAL_RESTAURANTE)
+        combo_loc.addItem("LA PROVINCIAL FAST FOOD", LOCAL_FAST_FOOD)
+        idx_l = 1 if gasto.local_id == LOCAL_FAST_FOOD else 0
+        combo_loc.setCurrentIndex(idx_l)
+        layout.addRow("Local:", combo_loc)
+
+        txt_cat = QComboBox()
+        txt_cat.addItems(["SERVICIOS", "ALQUILER", "LUZ", "AGUA", "GAS", "TRANSPORTE", "MANTENIMIENTO", "OTROS"])
+        idx_c = txt_cat.findText(gasto.categoria)
+        if idx_c >= 0:
+            txt_cat.setCurrentIndex(idx_c)
+        layout.addRow("Categoría:", txt_cat)
+
+        txt_desc = QLineEdit(gasto.descripcion)
+        layout.addRow("Descripción:", txt_desc)
+
+        spn_monto = QDoubleSpinBox()
+        spn_monto.setRange(0.01, 9999999.0)
+        spn_monto.setValue(gasto.monto or 0.0)
+        layout.addRow("Monto:", spn_monto)
+
+        combo_pago = QComboBox()
+        combo_pago.addItems(["EFECTIVO", "YAPE", "TRANSFERENCIA", "TARJETA"])
+        idx_p = combo_pago.findText(gasto.medio_pago)
+        if idx_p >= 0:
+            combo_pago.setCurrentIndex(idx_p)
+        layout.addRow("Medio de Pago:", combo_pago)
+
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        layout.addRow(btns)
+
+        if dlg.exec() == QDialog.Accepted:
+            gasto.fecha = dt_edit.date().toString("yyyy-MM-dd")
+            gasto.local_id = combo_loc.currentData()
+            gasto.categoria = txt_cat.currentText()
+            gasto.descripcion = txt_desc.text().strip() or "Gasto"
+            gasto.monto = spn_monto.value()
+            gasto.medio_pago = combo_pago.currentText()
+            ok, msg = self.egreso_service.actualizar_gasto(gasto)
+            if ok:
+                ToastManager.show_success(f"Gasto #{gasto.id} actualizado", self)
+            else:
+                QMessageBox.warning(self, "Error", msg)
+            self.refresh_data()
+
     def _del_gasto(self):
         row = self.tbl_gastos.currentRow()
         if row < 0:
@@ -381,7 +481,7 @@ class EgresosView(QWidget):
         layout.addRow("Cargo:", txt_cargo)
 
         txt_conc = QComboBox()
-        txt_conc.addItems(["SUELDO", "ADELANTO", "HORAS EXTRAS", "BONO", "LIQUIDACION", "PROPINAS"])
+        txt_conc.addItems(["SUELDO", "ADELANTO", "HORAS EXTRAS", "BONO", "LIQUIDACION", "PROPINAS", "TURNO DÍA", "TURNO NOCHE", "OTROS"])
         layout.addRow("Concepto:", txt_conc)
 
         spn_monto = QDoubleSpinBox()
@@ -409,6 +509,85 @@ class EgresosView(QWidget):
                 medio_pago=combo_pago.currentText()
             )
             self.egreso_service.registrar_pago_personal(p)
+            self.refresh_data()
+
+    def _edit_personal(self):
+        row = self.tbl_personal.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Atención", "Seleccione un pago de personal de la lista para editar.")
+            return
+        item = self.tbl_personal.item(row, 0)
+        if not item or not item.text():
+            return
+        pid = int(item.text())
+        pago = self.egreso_service.get_pago_personal_by_id(pid)
+        if not pago:
+            return
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"✏️ Editar Pago Personal #{pago.id}")
+        layout = QFormLayout(dlg)
+
+        try:
+            dt = datetime.strptime(pago.fecha, "%Y-%m-%d")
+            dt_edit = QDateEdit(QDate(dt.year, dt.month, dt.day))
+        except Exception:
+            dt_edit = QDateEdit(QDate(self.current_year, self.current_month, 1))
+        dt_edit.setCalendarPopup(True)
+        layout.addRow("Fecha:", dt_edit)
+
+        combo_loc = QComboBox()
+        combo_loc.addItem("LA PROVINCIAL RESTAURANTE", LOCAL_RESTAURANTE)
+        combo_loc.addItem("LA PROVINCIAL FAST FOOD", LOCAL_FAST_FOOD)
+        idx_l = 1 if pago.local_id == LOCAL_FAST_FOOD else 0
+        combo_loc.setCurrentIndex(idx_l)
+        layout.addRow("Local:", combo_loc)
+
+        txt_trab = QLineEdit(pago.trabajador)
+        layout.addRow("Trabajador:", txt_trab)
+
+        txt_cargo = QLineEdit(pago.cargo)
+        layout.addRow("Cargo:", txt_cargo)
+
+        txt_conc = QComboBox()
+        txt_conc.addItems(["SUELDO", "ADELANTO", "HORAS EXTRAS", "BONO", "LIQUIDACION", "PROPINAS", "TURNO DÍA", "TURNO NOCHE", "OTROS"])
+        idx_c = txt_conc.findText(pago.concepto)
+        if idx_c >= 0:
+            txt_conc.setCurrentIndex(idx_c)
+        else:
+            txt_conc.setEditText(pago.concepto)
+        layout.addRow("Concepto:", txt_conc)
+
+        spn_monto = QDoubleSpinBox()
+        spn_monto.setRange(0.01, 9999999.0)
+        spn_monto.setValue(pago.monto or 0.0)
+        layout.addRow("Monto:", spn_monto)
+
+        combo_pago = QComboBox()
+        combo_pago.addItems(["EFECTIVO", "YAPE", "TRANSFERENCIA"])
+        idx_p = combo_pago.findText(pago.medio_pago)
+        if idx_p >= 0:
+            combo_pago.setCurrentIndex(idx_p)
+        layout.addRow("Medio de Pago:", combo_pago)
+
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        layout.addRow(btns)
+
+        if dlg.exec() == QDialog.Accepted:
+            pago.fecha = dt_edit.date().toString("yyyy-MM-dd")
+            pago.local_id = combo_loc.currentData()
+            pago.trabajador = txt_trab.text().strip() or "Personal"
+            pago.cargo = txt_cargo.text().strip() or "Operario"
+            pago.concepto = txt_conc.currentText()
+            pago.monto = spn_monto.value()
+            pago.medio_pago = combo_pago.currentText()
+            ok, msg = self.egreso_service.actualizar_pago_personal(pago)
+            if ok:
+                ToastManager.show_success(f"Pago #{pago.id} actualizado", self)
+            else:
+                QMessageBox.warning(self, "Error", msg)
             self.refresh_data()
 
     def _del_personal(self):

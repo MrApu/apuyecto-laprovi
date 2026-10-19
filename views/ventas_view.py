@@ -87,6 +87,8 @@ class VentasView(QWidget):
         for c in range(len(headers) - 1):
             self.table.horizontalHeader().setSectionResizeMode(c, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(len(headers) - 1, QHeaderView.Stretch)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         layout.addWidget(self.table)
 
         # Resumen Bar
@@ -204,7 +206,7 @@ class VentasView(QWidget):
             self.table.setItem(r, 11, item_saldo)
 
             # 12. Observaciones
-            self.table.setItem(r, 12, QTableWidgetItem(obs))
+            self.table.setItem(r, 12, self._locked_item(obs))
 
             self.widgets[r] = {
                 "fecha": fecha,

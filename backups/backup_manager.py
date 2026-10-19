@@ -109,3 +109,20 @@ class BackupManager:
             return True, f"Base de datos restaurada exitosamente desde {backup_filename}."
         except Exception as e:
             return False, f"Error durante la restauración: {str(e)}"
+
+    def eliminar_backup(self, backup_filename: str, usuario: str = "USUARIO") -> Tuple[bool, str]:
+        backup_path = os.path.join(self.backup_dir, backup_filename)
+        if not os.path.exists(backup_path):
+            return False, f"El archivo {backup_filename} no existe."
+        try:
+            os.remove(backup_path)
+            self.audit_repo.registrar(
+                accion="ELIMINAR_BACKUP",
+                entidad="sistema",
+                entidad_id=backup_filename,
+                detalles=f"Eliminada copia de seguridad {backup_filename}",
+                usuario=usuario
+            )
+            return True, f"Copia {backup_filename} eliminada correctamente."
+        except Exception as e:
+            return False, f"Error al eliminar copia: {str(e)}"

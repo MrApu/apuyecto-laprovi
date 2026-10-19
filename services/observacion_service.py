@@ -35,6 +35,25 @@ class ObservacionService:
 
         return True, "Observación guardada.", new_id
 
+    def get_by_id(self, obs_id: int) -> Optional[Observacion]:
+        return self.repo.get_by_id(obs_id)
+
+    def actualizar_observacion(self, obs: Observacion, usuario: str = "USUARIO") -> Tuple[bool, str]:
+        if not obs.id:
+            return False, "ID de observación no especificado."
+        if not obs.texto or not obs.texto.strip():
+            return False, "El texto de la observación no puede estar vacío."
+
+        self.repo.update(obs)
+        self.audit_repo.registrar(
+            accion="ACTUALIZAR_OBSERVACION",
+            entidad="observaciones",
+            entidad_id=str(obs.id),
+            detalles=f"Actualizada observación ID {obs.id} [{obs.tipo}]: {obs.texto.strip()}",
+            usuario=usuario
+        )
+        return True, "Observación actualizada exitosamente."
+
     def eliminar_observacion(self, obs_id: int, usuario: str = "USUARIO") -> Tuple[bool, str]:
         self.repo.delete(obs_id)
         self.audit_repo.registrar(

@@ -25,6 +25,18 @@ class ObservacionRepository:
         query = "INSERT INTO observaciones (fecha, texto, tipo, fecha_creacion) VALUES (?, ?, ?, CURRENT_TIMESTAMP)"
         return self.db.execute_non_query(query, (obs.fecha, obs.texto, obs.tipo))
 
+    def get_by_id(self, obs_id: int) -> Optional[Observacion]:
+        rows = self.db.execute_query(
+            "SELECT id, fecha, texto, tipo, fecha_creacion FROM observaciones WHERE id = ?",
+            (obs_id,)
+        )
+        return self._row_to_entity(rows[0]) if rows else None
+
+    def update(self, obs: Observacion) -> bool:
+        query = "UPDATE observaciones SET fecha = ?, texto = ?, tipo = ? WHERE id = ?"
+        self.db.execute_non_query(query, (obs.fecha, obs.texto, obs.tipo, obs.id))
+        return True
+
     def delete(self, obs_id: int) -> bool:
         self.db.execute_non_query("DELETE FROM observaciones WHERE id = ?", (obs_id,))
         return True

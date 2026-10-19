@@ -33,6 +33,25 @@ class ValesView(QWidget):
         header_box.addWidget(self.lbl_title)
         header_box.addStretch()
 
+        self.btn_editar_sel = QPushButton("✏️ Editar Día Seleccionado")
+        self.btn_editar_sel.setCursor(Qt.PointingHandCursor)
+        self.btn_editar_sel.setStyleSheet("""
+            QPushButton {
+                background-color: #18181B;
+                color: #FFFFFF;
+                border: 1px solid #27272A;
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-weight: 700;
+            }
+            QPushButton:hover {
+                background-color: #27272A;
+                border: 1px solid #DC2626;
+            }
+        """)
+        self.btn_editar_sel.clicked.connect(self._on_editar_seleccionado)
+        header_box.addWidget(self.btn_editar_sel)
+
         self.btn_guardar_todo = QPushButton("💾 Guardar Cambios en Lote")
         self.btn_guardar_todo.setProperty("class", "PrimaryBtn")
         self.btn_guardar_todo.clicked.connect(self._on_guardar_todo)
@@ -52,22 +71,25 @@ class ValesView(QWidget):
         layout.addLayout(kpi_row)
 
         # Rules & Hint Banner
-        info_banner = QLabel("💡 <b>Tip ágil:</b> Haga <b>doble clic</b> en cualquier fecha para abrir la ventana emergente con botones rápidos (+1, +5, +10) sin usar flechas.")
+        info_banner = QLabel("💡 <b>Edición protegida:</b> Use el botón <b>'✏️ Editar'</b> de cada fila para abrir la ventana rápida sin flechas y sin riesgo de cambios accidentales.")
         info_banner.setStyleSheet("background-color: #0F172A; color: #38BDF8; padding: 10px 14px; border-radius: 8px; border: 1px solid #1E293B;")
         layout.addWidget(info_banner)
 
         # Table
         self.table = QTableWidget()
-        self.table.setColumnCount(5)
+        self.table.setColumnCount(6)
         self.table.setHorizontalHeaderLabels([
-            "Fecha", "Vales Entregados", "Vales Canjeados", "Saldo Calculado", "Observaciones"
+            "Fecha", "Vales Entregados", "Vales Canjeados", "Saldo Calculado", "Observaciones", "Acción"
         ])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Fixed)
+        self.table.setColumnWidth(5, 95)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.cellDoubleClicked.connect(self._on_cell_double_clicked)
         layout.addWidget(self.table)
 
@@ -153,6 +175,29 @@ class ValesView(QWidget):
                 txt_obs.setText(v.observacion)
             self.table.setCellWidget(r, 4, txt_obs)
 
+            # Botón Editar dedicado (CRUD sin editar celdas accidentalmente)
+            btn_edit_row = QPushButton("✏️ Editar")
+            btn_edit_row.setCursor(Qt.PointingHandCursor)
+            btn_edit_row.setStyleSheet("""
+                QPushButton {
+                    background-color: #18181B;
+                    color: #FFFFFF;
+                    border: 1px solid #27272A;
+                    border-radius: 4px;
+                    font-size: 11px;
+                    font-weight: 700;
+                    padding: 3px 8px;
+                }
+                QPushButton:hover {
+                    background-color: #27272A;
+                    color: #EF4444;
+                    border: 1px solid #DC2626;
+                }
+            """)
+            f_val = fecha
+            btn_edit_row.clicked.connect(lambda ch, f=f_val: self._abrir_dialogo_vale(f))
+            self.table.setCellWidget(r, 5, btn_edit_row)
+
             self.widgets[r] = {
                 "fecha": fecha,
                 "entregados": sb_ent,
@@ -161,6 +206,15 @@ class ValesView(QWidget):
             }
 
         self._recalcular_resumen()
+
+    def _on_editar_seleccionado(self):
+        row = self.table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Atención", "Por favor seleccione un día de la lista para editar.")
+            return
+        item = self.table.item(row, 0)
+        if item and item.text():
+            self._abrir_dialogo_vale(item.text())
 
     def _on_value_changed(self, row: int):
         w = self.widgets.get(row)

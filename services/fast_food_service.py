@@ -59,3 +59,15 @@ class FastFoodService:
         usuario: str = "USUARIO"
     ) -> Tuple[bool, str, FastFoodConsumo]:
         return self.registrar_consumo_fast_food(fecha, tickets_local, vales_local, observacion, usuario)
+
+    def eliminar_consumo(self, fecha: str, usuario: str = "USUARIO") -> Tuple[bool, str]:
+        self.repo.delete(fecha)
+        self.audit_repo.registrar(
+            accion="ELIMINAR_CONSUMO_FAST_FOOD",
+            entidad="fast_food_consumos",
+            entidad_id=fecha,
+            local_id="fast_food",
+            detalles=f"Eliminado consumo Fast Food para fecha {fecha}",
+            usuario=usuario
+        )
+        return True, "Consumo eliminado."

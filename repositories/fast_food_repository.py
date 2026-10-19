@@ -69,6 +69,10 @@ class FastFoodRepository:
             "total_tickets_local": 0, "total_vales_local": 0, "total_consumido": 0
         }
 
+    def delete(self, fecha: str) -> bool:
+        self.db.execute_non_query("DELETE FROM fast_food_consumos WHERE fecha = ?", (fecha,))
+        return True
+
     @staticmethod
     def _row_to_entity(r) -> FastFoodConsumo:
         return FastFoodConsumo(

@@ -59,6 +59,7 @@ class TicketsPoliciaView(QWidget):
         # Matrix Table
         self.table = QTableWidget()
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.cellClicked.connect(self._on_cell_clicked)
         layout.addWidget(self.table)
 
