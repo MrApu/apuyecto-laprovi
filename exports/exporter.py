@@ -9,8 +9,8 @@ class Exporter:
         self.pdf = PDFGenerator()
         self.csv = CSVExporter()
 
-    def export_excel(self, anio: int, mes: int, filepath: str) -> bool:
-        return self.excel.exportar_reporte_mensual(anio, mes, filepath)
+    def export_excel(self, anio: int, mes: int, filepath: str, local_id: str = "restaurante") -> bool:
+        return self.excel.exportar_reporte_mensual(anio, mes, filepath, local_id)
 
     def export_pdf(self, anio: int, mes: int, filepath: str) -> bool:
         return self.pdf.generar_reporte_mensual_pdf(anio, mes, filepath)

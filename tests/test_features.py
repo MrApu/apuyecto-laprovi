@@ -170,5 +170,34 @@ def test_spotlight_and_toast_components(temp_db):
     toast = ToastNotification("Test message", toast_type="success", duration_ms=100)
     assert toast.toast_type == "success"
 
+def test_detalle_dia_dialog_and_collapsible_dashboard():
+    import os
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+
+    from views.dialogs.detalle_dia_dialog import DetalleDiaDialog
+    from views.dashboard_view import DashboardView
+
+    # Verify DetalleDiaDialog tabs: PNP, Compras, Personal (NO GASTOS OPERATIVOS)
+    dlg = DetalleDiaDialog(2026, 9, 1, "restaurante")
+    assert dlg.tabs.count() == 3
+    tab_titles = [dlg.tabs.tabText(i) for i in range(dlg.tabs.count())]
+    assert any("Efectivos PNP" in t for t in tab_titles)
+    assert any("Compras e Insumos" in t for t in tab_titles)
+    assert any("Pagos Personal" in t for t in tab_titles)
+    assert not any("Gastos Operativos" in t for t in tab_titles), "Gastos operativos deben estar removidos."
+
+    # Verify DashboardView collapsible sections
+    dash = DashboardView()
+    dash.set_periodo(2026, 9)
+    dash.set_local("restaurante")
+    assert len(dash.sections) == 3
+    assert dash.all_expanded is True
+    dash._toggle_all_sections()
+    assert dash.all_expanded is False
+    dash._toggle_all_sections()
+    assert dash.all_expanded is True
+
 
 

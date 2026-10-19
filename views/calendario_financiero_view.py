@@ -171,7 +171,7 @@ class DayTileWidget(QFrame):
     """
     Celda de día en la cuadrícula del calendario con interactividad hover y doble clic drill-down.
     """
-    def __init__(self, anio: int, mes: int, dia: int, local_id: str, data: Optional[Dict[str, Any]], sede_name: str, popup: FloatingMiniReportPopup, parent=None):
+    def __init__(self, anio: int, mes: int, dia: int, local_id: str, data: Optional[Dict[str, Any]], sede_name: str, popup: FloatingMiniReportPopup, parent=None, on_updated=None):
         super().__init__(parent)
         self.anio = anio
         self.mes = mes
@@ -180,6 +180,7 @@ class DayTileWidget(QFrame):
         self.data = data
         self.sede_name = sede_name
         self.popup = popup
+        self.on_updated = on_updated
         self._init_ui()
 
     def _init_ui(self):
@@ -195,8 +196,8 @@ class DayTileWidget(QFrame):
             # Empty / Trailing cell outside the month
             self.setStyleSheet("""
                 DayTileWidget {
-                    background-color: #0B0F19;
-                    border: 1px dashed #1E293B;
+                    background-color: #0A0A0A;
+                    border: 1px dashed #262626;
                     border-radius: 8px;
                 }
             """)
@@ -207,13 +208,13 @@ class DayTileWidget(QFrame):
         # Active Day styling
         self.setStyleSheet("""
             DayTileWidget {
-                background-color: #111827;
-                border: 1px solid #1F2937;
+                background-color: #141414;
+                border: 1px solid #262626;
                 border-radius: 8px;
             }
             DayTileWidget:hover {
-                background-color: #1A2338;
-                border: 1px solid #6366F1;
+                background-color: #1C1C1F;
+                border: 2px solid #DC2626;
             }
         """)
 
@@ -289,6 +290,10 @@ class DayTileWidget(QFrame):
                 self.popup.hide()
             dlg = DetalleDiaDialog(self.anio, self.mes, self.dia, self.local_id, parent=self)
             dlg.exec()
+            if self.on_updated:
+                self.on_updated()
+            elif self.parent() and hasattr(self.parent(), "refresh_data"):
+                self.parent().refresh_data()
         super().mouseDoubleClickEvent(event)
 
 
@@ -507,16 +512,16 @@ class CalendarioFinancieroView(QWidget):
         self.btn_grafica = QPushButton("📈 Ver Gráfica")
         self.btn_grafica.setStyleSheet("""
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4F46E5, stop:1 #6366F1);
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #991B1B, stop:1 #DC2626);
                 color: #FFFFFF;
-                border: 1px solid #818CF8;
+                border: 1px solid #EF4444;
                 border-radius: 6px;
                 padding: 6px 16px;
                 font-weight: 800;
             }
             QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4338CA, stop:1 #4F46E5);
-                border: 1px solid #A5B4FC;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #7F1D1D, stop:1 #B91C1C);
+                border: 1px solid #F87171;
             }
         """)
         self.btn_grafica.clicked.connect(self._mostrar_grafica)
@@ -625,6 +630,7 @@ class CalendarioFinancieroView(QWidget):
             dia_num = dia_info.get("dia", 1)
             dlg = DetalleDiaDialog(self.current_year, self.current_month, dia_num, self.current_local, parent=self)
             dlg.exec()
+            self.refresh_data()
 
     def _copiar_whatsapp_mes(self):
         res = self.cached_resumen
@@ -646,7 +652,6 @@ class CalendarioFinancieroView(QWidget):
             f"───────────────────────────\n"
             f"💸 *EGRESOS OPERATIVOS:*\n"
             f"  • Compras / Insumos: S/ {res.get('total_compras', 0):,.2f}\n"
-            f"  • Gastos Operativos: S/ {res.get('total_gastos', 0):,.2f}\n"
             f"  • Planilla / Personal: S/ {res.get('total_personal', 0):,.2f}\n"
             f"  ➜ *TOTAL EGRESOS:* S/ {res.get('total_egresos', 0):,.2f}\n"
             f"───────────────────────────\n"
@@ -727,7 +732,7 @@ class CalendarioFinancieroView(QWidget):
         for row_idx, week in enumerate(month_matrix, start=1):
             for col_idx, day_num in enumerate(week):
                 day_data = dias_by_num.get(day_num) if day_num > 0 else None
-                tile = DayTileWidget(anio, mes, day_num, local, day_data, sede_name, self.popup_report, self)
+                tile = DayTileWidget(anio, mes, day_num, local, day_data, sede_name, self.popup_report, self, on_updated=self.refresh_data)
                 self.grid_layout.addWidget(tile, row_idx, col_idx)
 
         # 4. Populate Table

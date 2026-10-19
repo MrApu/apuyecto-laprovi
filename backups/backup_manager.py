@@ -14,7 +14,7 @@ class BackupManager:
             self.db = DatabaseManager.get_instance(db_path)
         else:
             self.db = DatabaseManager.get_instance()
-        self.backup_dir = backup_dir or os.path.join(os.path.dirname(os.path.dirname(self.db.db_path)), "backups_db")
+        self.backup_dir = backup_dir or os.path.join(os.path.dirname(os.path.abspath(self.db.db_path)), "backups_db")
         os.makedirs(self.backup_dir, exist_ok=True)
         self.audit_repo = AuditoriaRepository(self.db)
 

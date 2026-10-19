@@ -44,8 +44,8 @@ class TicketService:
 
         return policias, num_dias, matriz
 
-    def toggle_ticket(self, mes_id: int, policia_id: int, dia: int, valor: int, usuario: str = "USUARIO") -> bool:
-        res = self.repo.set_ticket_policia(mes_id, policia_id, dia, valor)
+    def toggle_ticket(self, mes_id: int, policia_id: int, dia: int, valor: int, usuario: str = "USUARIO", local_id: str = "restaurante") -> bool:
+        res = self.repo.set_ticket_policia(mes_id, policia_id, dia, valor, local_id=local_id)
         return res
 
     def get_historial_policia(self, policia_id: int) -> List[dict]:

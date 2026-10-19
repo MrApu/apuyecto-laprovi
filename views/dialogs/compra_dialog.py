@@ -21,37 +21,38 @@ class CompraSimpleDialog(QDialog):
     - Medio de pago
     - Categoría rápida
     """
-    def __init__(self, parent=None, anio: int = 2026, mes: int = 9, local_id: str = LOCAL_RESTAURANTE, compra: Optional[Compra] = None):
+    def __init__(self, parent=None, anio: int = 2026, mes: int = 9, local_id: str = LOCAL_RESTAURANTE, compra: Optional[Compra] = None, dia: Optional[int] = None):
         super().__init__(parent)
         self.anio = anio
         self.mes = mes
+        self.dia = dia
         self.default_local = local_id if local_id in (LOCAL_RESTAURANTE, LOCAL_FAST_FOOD) else LOCAL_RESTAURANTE
         self.compra = compra
 
         title = "✏️ Editar Compra" if compra else "🛒 Registrar Compra / Insumo"
         self.setWindowTitle(title)
-        self.resize(480, 420)
+        self.resize(500, 430)
         self.setStyleSheet("""
             QDialog {
-                background-color: #090D16;
-                color: #F8FAFC;
+                background-color: #0A0A0A;
+                color: #FFFFFF;
             }
             QLabel {
-                color: #E2E8F0;
-                font-weight: 600;
+                color: #FFFFFF;
+                font-weight: 700;
                 font-size: 12px;
             }
             QLineEdit, QTextEdit, QComboBox, QDateEdit, QDoubleSpinBox {
-                background-color: #111827;
+                background-color: #141414;
                 color: #FFFFFF;
-                border: 1px solid #334155;
+                border: 1px solid #27272A;
                 border-radius: 6px;
                 padding: 6px 10px;
                 font-size: 13px;
             }
             QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QDateEdit:focus, QDoubleSpinBox:focus {
-                border: 1px solid #6366F1;
-                background-color: #1E293B;
+                border: 1px solid #DC2626;
+                background-color: #18181B;
             }
         """)
         self._init_ui()
@@ -68,13 +69,13 @@ class CompraSimpleDialog(QDialog):
         icon = "✏️" if self.compra else "🛒"
         title_text = "EDITAR COMPRA" if self.compra else "NUEVA COMPRA / EGRESO"
         lbl_title = QLabel(f"{icon} {title_text}")
-        lbl_title.setStyleSheet("font-size: 16px; font-weight: 800; color: #38BDF8;")
+        lbl_title.setStyleSheet("font-size: 16px; font-weight: 900; color: #FFFFFF;")
         header_box.addWidget(lbl_title)
         layout.addLayout(header_box)
 
         # Form Layout
         form_frame = QFrame()
-        form_frame.setStyleSheet("background-color: #0F172A; border: 1px solid #1F2937; border-radius: 8px; padding: 12px;")
+        form_frame.setStyleSheet("background-color: #141414; border: 1px solid #262626; border-radius: 8px; padding: 12px;")
         form = QFormLayout(form_frame)
         form.setContentsMargins(10, 10, 10, 10)
         form.setSpacing(12)
@@ -82,7 +83,10 @@ class CompraSimpleDialog(QDialog):
 
         # 1. Fecha
         now = datetime.now()
-        initial_day = now.day if (now.year == self.anio and now.month == self.mes) else 1
+        if self.dia and 1 <= self.dia <= 31:
+            initial_day = self.dia
+        else:
+            initial_day = now.day if (now.year == self.anio and now.month == self.mes) else 1
         self.dt_fecha = QDateEdit(QDate(self.anio, self.mes, initial_day))
         self.dt_fecha.setCalendarPopup(True)
         form.addRow("📅 Fecha:", self.dt_fecha)
@@ -103,11 +107,11 @@ class CompraSimpleDialog(QDialog):
         self.spn_monto.setValue(0.0)
         self.spn_monto.setStyleSheet("""
             QDoubleSpinBox {
-                background-color: #1E293B;
-                color: #10B981;
-                font-size: 15px;
-                font-weight: 800;
-                border: 1px solid #10B981;
+                background-color: #18181B;
+                color: #FFFFFF;
+                font-size: 16px;
+                font-weight: 900;
+                border: 2px solid #DC2626;
                 padding: 6px 10px;
                 border-radius: 6px;
             }
@@ -147,15 +151,15 @@ class CompraSimpleDialog(QDialog):
         self.btn_cancelar = QPushButton("✕ Cancelar")
         self.btn_cancelar.setStyleSheet("""
             QPushButton {
-                background-color: #1E293B;
-                color: #94A3B8;
-                border: 1px solid #334155;
+                background-color: #18181B;
+                color: #A1A1AA;
+                border: 1px solid #27272A;
                 border-radius: 6px;
                 padding: 8px 16px;
                 font-weight: 700;
             }
             QPushButton:hover {
-                background-color: #334155;
+                background-color: #27272A;
                 color: #FFFFFF;
             }
         """)
@@ -163,20 +167,20 @@ class CompraSimpleDialog(QDialog):
         btn_layout.addWidget(self.btn_cancelar)
 
         self.btn_guardar = QPushButton("💾 Guardar Compra")
-        self.btn_guardar.setProperty("class", "SuccessBtn")
+        self.btn_guardar.setProperty("class", "PrimaryBtn")
         self.btn_guardar.setStyleSheet("""
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #059669, stop:1 #10B981);
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #991B1B, stop:1 #DC2626);
                 color: #FFFFFF;
-                border: 1px solid #34D399;
+                border: 1px solid #EF4444;
                 border-radius: 6px;
                 padding: 8px 20px;
                 font-weight: 800;
                 font-size: 13px;
             }
             QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #047857, stop:1 #059669);
-                border: 1px solid #6EE7B7;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #7F1D1D, stop:1 #B91C1C);
+                border: 1px solid #F87171;
             }
         """)
         self.btn_guardar.clicked.connect(self._on_guardar)

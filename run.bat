@@ -1,10 +1,25 @@
 @echo off
+chcp 65001 > nul
 cd /d "%~dp0"
-set PYTHON_EXE=.python\python.exe
-if not exist "%PYTHON_EXE%" (
-    set PYTHON_EXE=python
+
+if exist ".python\python.exe" (
+    ".python\python.exe" main.py
+    goto :check_err
 )
-"%PYTHON_EXE%" main.py
+
+if exist "dist\LaProvincial\LaProvincial.exe" (
+    start "" "dist\LaProvincial\LaProvincial.exe"
+    exit /b 0
+)
+
+if exist "LaProvincial.exe" (
+    start "" "LaProvincial.exe"
+    exit /b 0
+)
+
+python main.py
+
+:check_err
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo ========================================================

@@ -50,19 +50,19 @@ class CollapsibleCategory(QWidget):
         self.btn_header.setCursor(Qt.PointingHandCursor)
         self.btn_header.setStyleSheet("""
             QPushButton {
-                background-color: #111827;
-                color: #F1F5F9;
+                background-color: #141414;
+                color: #FFFFFF;
                 text-align: left;
                 padding: 10px 14px;
                 font-size: 11px;
                 font-weight: 800;
-                border: 1px solid #1F2937;
+                border: 1px solid #27272A;
                 border-radius: 8px;
                 letter-spacing: 0.6px;
             }
             QPushButton:hover {
-                background-color: #1E293B;
-                border: 1px solid #6366F1;
+                background-color: #1C1C1F;
+                border: 1px solid #DC2626;
                 color: #FFFFFF;
             }
         """)
@@ -71,17 +71,17 @@ class CollapsibleCategory(QWidget):
         header_layout.setContentsMargins(0, 0, 0, 0)
         
         self.lbl_title = QLabel(f"{icon}  {title.upper()}")
-        self.lbl_title.setStyleSheet("font-weight: 800; font-size: 11px; color: #E2E8F0; background: transparent;")
+        self.lbl_title.setStyleSheet("font-weight: 800; font-size: 11px; color: #FFFFFF; background: transparent;")
         header_layout.addWidget(self.lbl_title)
         header_layout.addStretch()
 
         if count_text:
             lbl_cnt = QLabel(count_text)
-            lbl_cnt.setStyleSheet("background: #1E293B; color: #38BDF8; font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 8px; border: 1px solid #334155;")
+            lbl_cnt.setStyleSheet("background: #271214; color: #EF4444; font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 8px; border: 1px solid #7F1D1D;")
             header_layout.addWidget(lbl_cnt)
 
         self.lbl_arrow = QLabel("▾" if self.is_expanded else "▸")
-        self.lbl_arrow.setStyleSheet("color: #94A3B8; font-size: 12px; font-weight: bold; background: transparent; padding-left: 4px;")
+        self.lbl_arrow.setStyleSheet("color: #A1A1AA; font-size: 12px; font-weight: bold; background: transparent; padding-left: 4px;")
         header_layout.addWidget(self.lbl_arrow)
 
         self.btn_header.clicked.connect(self.toggle)
@@ -101,7 +101,7 @@ class CollapsibleCategory(QWidget):
         btn.setStyleSheet("""
             QPushButton {
                 background-color: transparent;
-                color: #94A3B8;
+                color: #A1A1AA;
                 border: 1px solid transparent;
                 text-align: left;
                 padding: 8px 12px;
@@ -111,16 +111,16 @@ class CollapsibleCategory(QWidget):
                 border-left: 3px solid transparent;
             }
             QPushButton:hover {
-                background-color: #1E293B;
-                border: 1px solid #334155;
-                border-left: 3px solid #38BDF8;
+                background-color: #1C1C1F;
+                border: 1px solid #27272A;
+                border-left: 3px solid #DC2626;
                 color: #FFFFFF;
             }
             QPushButton:checked {
-                background-color: #1E1B4B;
-                color: #C7D2FE;
-                border: 1px solid #3730A3;
-                border-left: 3px solid #6366F1;
+                background-color: #271214;
+                color: #FFFFFF;
+                border: 1px solid #7F1D1D;
+                border-left: 4px solid #DC2626;
                 font-weight: 700;
             }
         """)
