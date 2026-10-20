@@ -1,0 +1,40 @@
+================================================================================
+       SISTEMA DE CONTROL LA PROVINCIAL - GUÍA DE USO PORTABLE
+================================================================================
+
+Este paquete es 100% PORTABLE.
+No requiere instalar Python, librerías, dependencias ni configurar rutas en la nueva laptop.
+
+--------------------------------------------------------------------------------
+¿CÓMO USAR EN OTRA LAPTOP O COMPUTADORA?
+--------------------------------------------------------------------------------
+
+PASO 1: COPIAR LA CARPETA
+- Copia esta carpeta completa ("LaProvincial") a una memoria USB, disco externo o envíala en un archivo ZIP.
+- En la nueva laptop, pega la carpeta en cualquier lugar que prefieras:
+  Ejemplo recomendado: C:\LaProvincial   o   En el Escritorio / Documentos.
+  (Evita carpetas del sistema restringidas como "Program Files" para que pueda escribir la base de datos sin problemas de permisos de administrador).
+
+PASO 2: ABRIR EL SISTEMA
+- Para abrir directamente: Haz doble clic en "LaProvincial.exe" o en "INICIAR_SISTEMA.bat".
+
+PASO 3 (OPCIONAL): CREAR ACCESO DIRECTO EN EL ESCRITORIO
+- Si deseas tener un icono directo en la pantalla de inicio de la nueva laptop, haz doble clic sobre el archivo "CREAR_ACCESO_DIRECTO.bat".
+- Se creará automáticamente el acceso directo en el Escritorio.
+
+--------------------------------------------------------------------------------
+DATOS Y BASE DE DATOS:
+--------------------------------------------------------------------------------
+- Todos tus datos (policías, ventas, tickets, pagos, personal, fast food y configuraciones) se guardan en el archivo:
+  "control_policial.db" ubicado dentro de esta misma carpeta.
+- Las copias de seguridad automáticas y manuales se guardarán en la carpeta:
+  "backups_db" dentro de esta carpeta.
+- Si quieres respaldar tu información o pasar tus datos a otra máquina, solo tienes que copiar el archivo "control_policial.db".
+
+--------------------------------------------------------------------------------
+REQUISITOS DEL SISTEMA:
+--------------------------------------------------------------------------------
+- Sistema Operativo: Windows 10 o Windows 11 (64 bits).
+- NO requiere conexión a internet (funciona completamente offline).
+- NO requiere instalar Python.
+================================================================================
