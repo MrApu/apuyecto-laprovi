@@ -222,3 +222,35 @@ CREATE INDEX IF NOT EXISTS idx_compras_fecha_local ON compras(fecha, local_id);
 CREATE INDEX IF NOT EXISTS idx_gastos_fecha_local ON gastos(fecha, local_id);
 CREATE INDEX IF NOT EXISTS idx_pagos_personal_fecha_local ON pagos_personal(fecha, local_id);
 CREATE INDEX IF NOT EXISTS idx_auditoria_fecha ON auditoria(fecha);
+
+CREATE TABLE IF NOT EXISTS policias_pagos_tickets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    policia_id INTEGER NOT NULL,
+    mes_id INTEGER,
+    fecha TEXT NOT NULL,
+    tickets_pagados INTEGER NOT NULL DEFAULT 0,
+    monto_pagado REAL NOT NULL DEFAULT 0.0,
+    medio_pago TEXT NOT NULL DEFAULT 'EFECTIVO',
+    observacion TEXT,
+    fecha_registro TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(policia_id) REFERENCES policias(id) ON DELETE CASCADE,
+    FOREIGN KEY(mes_id) REFERENCES meses(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_policias_pagos_policia ON policias_pagos_tickets(policia_id);
+CREATE INDEX IF NOT EXISTS idx_policias_pagos_mes ON policias_pagos_tickets(mes_id);
+
+CREATE TABLE IF NOT EXISTS vales_policias (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    policia_id INTEGER NOT NULL,
+    fecha TEXT NOT NULL,
+    local_id TEXT NOT NULL DEFAULT 'restaurante',
+    tipo_operacion TEXT NOT NULL DEFAULT 'ENTREGA',
+    cantidad_vales INTEGER NOT NULL DEFAULT 1,
+    tickets_equivalentes INTEGER NOT NULL DEFAULT 1,
+    observacion TEXT,
+    fecha_registro TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(policia_id) REFERENCES policias(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_vales_policias_policia ON vales_policias(policia_id);
+CREATE INDEX IF NOT EXISTS idx_vales_policias_fecha ON vales_policias(fecha);
+

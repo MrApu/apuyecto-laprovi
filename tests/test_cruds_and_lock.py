@@ -42,6 +42,7 @@ def test_all_views_have_no_edit_triggers():
     # 5. ValesView
     v_val = ValesView()
     assert v_val.table.editTriggers() == QTableWidget.NoEditTriggers
+    assert v_val.tbl_vales_policias.editTriggers() == QTableWidget.NoEditTriggers
 
     # 6. VentasView
     v_vnt = VentasView()
@@ -50,10 +51,13 @@ def test_all_views_have_no_edit_triggers():
     # 7. PagosView
     v_pg = PagosView()
     assert v_pg.table.editTriggers() == QTableWidget.NoEditTriggers
+    assert v_pg.tbl_policias.editTriggers() == QTableWidget.NoEditTriggers
+    assert v_pg.tbl_historial_policia.editTriggers() == QTableWidget.NoEditTriggers
 
     # 8. TicketsPoliciaView
     v_tp = TicketsPoliciaView()
     assert v_tp.table.editTriggers() == QTableWidget.NoEditTriggers
+    assert v_tp.tbl_rapido.editTriggers() == QTableWidget.NoEditTriggers
 
     # 9. BackupView
     v_bk = BackupView()

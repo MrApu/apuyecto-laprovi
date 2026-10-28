@@ -120,3 +120,34 @@ class TicketService:
             "total_policias": tot_policias,
             "vales_policiales": tot_vales
         }
+
+    def asignar_cantidad_tickets_policia(
+        self,
+        mes_id: int,
+        policia_id: int,
+        cantidad: int,
+        local_id: str = "restaurante",
+        usuario: str = "USUARIO"
+    ) -> Tuple[bool, str]:
+        mes = self.mes_repo.get_by_id(mes_id)
+        if not mes:
+            return False, "Mes no encontrado."
+        num_dias = calendar.monthrange(mes.anio, mes.mes)[1]
+        if cantidad < 0 or cantidad > num_dias:
+            return False, f"La cantidad de tickets debe estar entre 0 y {num_dias}."
+
+        batch = []
+        for d in range(1, num_dias + 1):
+            val = 1 if d <= cantidad else 0
+            batch.append((mes_id, policia_id, local_id, d, val))
+
+        self.repo.set_tickets_policia_batch(batch)
+        self.audit_repo.registrar(
+            accion="ASIGNAR_CANTIDAD_TICKETS",
+            entidad="tickets_por_policia",
+            entidad_id=f"mes_{mes_id}_pol_{policia_id}",
+            detalles=f"Asignación rápida directa de {cantidad} tickets para policía ID {policia_id}.",
+            usuario=usuario
+        )
+        return True, f"Se asignaron {cantidad} tickets correctamente al policía."
+
