@@ -9,36 +9,40 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont
 
 from models.pago import PagoTicket
-from models.policia_pago import PoliciaPagoTicket, ResumenDeudaPolicia
+from models.cuenta_ticket import MovimientoTicket, ResumenCuentaPolicia
+from services.cuenta_ticket_service import CuentaTicketService
 from services.pago_service import PagoService
 from services.ticket_service import TicketService
 from services.mes_service import MesService
 from models.local import LOCAL_RESTAURANTE, LOCAL_NAMES
 from views.components.toast import ToastManager
 from views.dialogs.detalle_dia_dialog import DetalleDiaDialog
-from views.dialogs.pago_policia_dialog import RegistrarPagoPoliciaDialog
-from views.dialogs.asignar_tickets_policia_dialog import AsignarTicketsPoliciaDialog
+from views.dialogs.registrar_deuda_ticket_dialog import RegistrarDeudaTicketDialog
+from views.dialogs.registrar_pago_cuenta_dialog import RegistrarPagoCuentaDialog
 
 class PagosView(QWidget):
     """
-    Control de Cobranzas y Deudas con:
-    1. Módulo por Policía con buscador en tiempo real interactivo (descarte automático),
-       visualización directa de 'Debe Tickets' y 'Pagó Tickets', y registro de pagos.
-    2. Resumen Diario General por fecha para control consolidado.
+    Control de Cobranzas y Deudas independiente de la matriz policial:
+    - Lista de quiénes deben tickets y quiénes han pagado tickets.
+    - Buscador en tiempo real conectado a la base de datos que descarta los demás nombres al escribir.
+    - Ficha de cuenta corriente por policía con botones directos:
+      ➕ Debe Tickets  y  💵 Pagó Tickets.
+    - Resumen Diario consolidado para auditoría.
     """
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.cuenta_service = CuentaTicketService()
         self.pago_service = PagoService()
         self.ticket_service = TicketService()
         self.mes_service = MesService()
         self.current_anio = 2026
         self.current_mes = 9
-        self.current_mes_id: Optional[int] = None
         self.current_local = LOCAL_RESTAURANTE
         self.precio_menu = 12.0
         self.active_chip = "TODOS"
-        self.policias_deudas: List[ResumenDeudaPolicia] = []
-        self.selected_policia: Optional[ResumenDeudaPolicia] = None
+
+        self.resumen_cuentas: List[ResumenCuentaPolicia] = []
+        self.selected_policia: Optional[ResumenCuentaPolicia] = None
         self.widgets: Dict[int, Dict[str, Any]] = {}
 
         self._init_ui()
@@ -52,15 +56,8 @@ class PagosView(QWidget):
         self.current_anio = anio
         self.current_mes = mes
         m = self.mes_service.get_by_anio_mes(anio, mes)
-        if m:
-            self.current_mes_id = m.id
-            self.precio_menu = m.precio_ticket_policial or 12.0
-        else:
-            ok, msg, m_id = self.mes_service.crear_mes(anio, mes)
-            self.current_mes_id = m_id
-            self.precio_menu = 12.0
-
-        self.lbl_title.setText(f"💰 CONTROL DE COBRANZAS Y DEUDAS — {mes:02d}/{anio}")
+        self.precio_menu = m.precio_ticket_policial if m else 12.0
+        self.lbl_title.setText(f"💰 COBRANZAS: QUIÉN DEBE Y QUIÉN PAGA TICKETS — {mes:02d}/{anio}")
         self.cargar_datos()
 
     def _init_ui(self):
@@ -70,8 +67,8 @@ class PagosView(QWidget):
 
         # Header principal
         header_box = QHBoxLayout()
-        self.lbl_title = QLabel(f"💰 CONTROL DE COBRANZAS Y DEUDAS — {self.current_mes:02d}/{self.current_anio}")
-        self.lbl_title.setStyleSheet("font-size: 18px; font-weight: 800; color: #FFFFFF;")
+        self.lbl_title = QLabel(f"💰 COBRANZAS: QUIÉN DEBE Y QUIÉN PAGA TICKETS — {self.current_mes:02d}/{self.current_anio}")
+        self.lbl_title.setStyleSheet("font-size: 17px; font-weight: 800; color: #FFFFFF;")
         header_box.addWidget(self.lbl_title)
 
         self.lbl_local_badge = QLabel(f"📍 Sede: {LOCAL_NAMES.get(self.current_local, 'RESTAURANTE')}")
@@ -87,7 +84,7 @@ class PagosView(QWidget):
         header_box.addWidget(self.lbl_local_badge)
         header_box.addStretch()
 
-        self.btn_guardar_todo = QPushButton("💾 Guardar Pagos Diarios")
+        self.btn_guardar_todo = QPushButton("💾 Guardar Control Diario")
         self.btn_guardar_todo.setCursor(Qt.PointingHandCursor)
         self.btn_guardar_todo.setStyleSheet("""
             background-color: #10B981;
@@ -101,7 +98,7 @@ class PagosView(QWidget):
 
         layout.addLayout(header_box)
 
-        # Tabs: Por Policía y Diario General
+        # Pestañas principales
         self.tabs = QTabWidget()
         self.tabs.setStyleSheet("""
             QTabWidget::pane {
@@ -125,28 +122,36 @@ class PagosView(QWidget):
             }
         """)
 
-        # Pestaña 1: Por Policía
-        tab_policias = self._build_tab_policias()
-        self.tabs.addTab(tab_policias, "👮 Cobranzas y Deudas por Policía")
+        # Pestaña 1: Quién Debe y Quién Paga (Cuenta Corriente por Policía)
+        tab_cuentas = self._build_tab_cuentas()
+        self.tabs.addTab(tab_cuentas, "👮 Quién Debe y Quién Paga (Por Policía)")
 
-        # Pestaña 2: Resumen Diario
+        # Pestaña 2: Historial de Tickets Pagados
+        tab_pagados = self._build_tab_historial_pagados()
+        self.tabs.addTab(tab_pagados, "🟢 Lista de Tickets Pagados")
+
+        # Pestaña 3: Historial de Deudas Registradas
+        tab_deudas = self._build_tab_historial_deudas()
+        self.tabs.addTab(tab_deudas, "🔴 Lista de Deudas (Debe Tickets)")
+
+        # Pestaña 4: Control Diario Consolidado
         tab_diario = self._build_tab_diario()
         self.tabs.addTab(tab_diario, "📅 Control Diario por Fecha")
 
         layout.addWidget(self.tabs)
 
-    def _build_tab_policias(self) -> QWidget:
+    def _build_tab_cuentas(self) -> QWidget:
         w = QWidget()
         l = QVBoxLayout(w)
         l.setContentsMargins(12, 12, 12, 12)
         l.setSpacing(10)
 
-        # Buscador y Chips
+        # Buscador y filtros
         top_bar = QHBoxLayout()
         top_bar.setSpacing(8)
 
         self.txt_busqueda = QLineEdit()
-        self.txt_busqueda.setPlaceholderText("🔍 Buscar policía por apellidos, nombres, código o área... (los demás se van descartando)")
+        self.txt_busqueda.setPlaceholderText("🔍 Buscar policía en base de datos por apellidos, nombres, código... (descarte en tiempo real)")
         self.txt_busqueda.setStyleSheet("""
             QLineEdit {
                 background-color: #18181B;
@@ -164,15 +169,14 @@ class PagosView(QWidget):
         self.txt_busqueda.textChanged.connect(self._on_busqueda_changed)
         top_bar.addWidget(self.txt_busqueda, 4)
 
-        # Chips de filtrado
+        # Chips de filtro
         self.chip_group = QButtonGroup(self)
         self.chip_group.setExclusive(True)
 
         chips = [
-            ("🔘 Todos", "TODOS"),
-            ("🔴 Debe Tickets", "DEUDA"),
-            ("🟡 Pago Parcial", "PARCIAL"),
-            ("🟢 Pagado / Al Día", "PAGADO")
+            ("🔘 Todos los Policías", "TODOS"),
+            ("🔴 Con Deuda Pendiente", "DEUDA"),
+            ("🟢 Al Día (Sin Deuda)", "AL_DIA")
         ]
         for idx, (lbl, key) in enumerate(chips):
             btn = QPushButton(lbl)
@@ -206,17 +210,17 @@ class PagosView(QWidget):
 
         l.addLayout(top_bar)
 
-        # KPI Summary Cards
+        # KPIs Globales de Cuentas
         kpi_row = QHBoxLayout()
-        self.lbl_pol_total_tk = QLabel("0")
-        self.lbl_pol_pagados = QLabel("0")
-        self.lbl_pol_debidos = QLabel("0")
-        self.lbl_pol_monto_deuda = QLabel("S/ 0.00")
+        self.lbl_kpi_total_debe = QLabel("0")
+        self.lbl_kpi_total_pago = QLabel("0")
+        self.lbl_kpi_saldo_pend = QLabel("0")
+        self.lbl_kpi_monto_deuda = QLabel("S/ 0.00")
 
-        kpi_row.addWidget(self._create_kpi_card("TOTAL TICKETS", self.lbl_pol_total_tk, "#38BDF8"))
-        kpi_row.addWidget(self._create_kpi_card("TICKETS PAGADOS", self.lbl_pol_pagados, "#10B981"))
-        kpi_row.addWidget(self._create_kpi_card("DEBE TICKETS", self.lbl_pol_debidos, "#EF4444"))
-        kpi_row.addWidget(self._create_kpi_card("DEUDA TOTAL", self.lbl_pol_monto_deuda, "#F59E0B"))
+        kpi_row.addWidget(self._create_kpi_card("TICKETS REGISTRADOS QUE DEBEN", self.lbl_kpi_total_debe, "#EF4444"))
+        kpi_row.addWidget(self._create_kpi_card("TICKETS PAGADOS", self.lbl_kpi_total_pago, "#10B981"))
+        kpi_row.addWidget(self._create_kpi_card("SALDO PENDIENTE (DEBEN)", self.lbl_kpi_saldo_pend, "#F59E0B"))
+        kpi_row.addWidget(self._create_kpi_card("DEUDA TOTAL POR COBRAR", self.lbl_kpi_monto_deuda, "#DC2626"))
         l.addLayout(kpi_row)
 
         # Splitter: Tabla a la izquierda, Ficha a la derecha
@@ -229,10 +233,10 @@ class PagosView(QWidget):
         left_layout.setSpacing(6)
 
         self.tbl_policias = QTableWidget()
-        self.tbl_policias.setColumnCount(9)
+        self.tbl_policias.setColumnCount(8)
         self.tbl_policias.setHorizontalHeaderLabels([
-            "Código", "Policía", "Área", "Total Tickets", "Pagó Tickets", "Debe Tickets",
-            "Monto Pagado", "Deuda Pendiente", "Acción"
+            "Código", "Policía / Apellidos y Nombres", "Área", "Tickets que Debe",
+            "Tickets Pagados", "Saldo Pendiente (Debe)", "Monto Deuda (S/)", "Estado"
         ])
         self.tbl_policias.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.tbl_policias.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
@@ -242,8 +246,6 @@ class PagosView(QWidget):
         self.tbl_policias.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
         self.tbl_policias.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeToContents)
         self.tbl_policias.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeToContents)
-        self.tbl_policias.horizontalHeader().setSectionResizeMode(8, QHeaderView.Fixed)
-        self.tbl_policias.setColumnWidth(8, 120)
         self.tbl_policias.setAlternatingRowColors(True)
         self.tbl_policias.setSelectionBehavior(QTableWidget.SelectRows)
         self.tbl_policias.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -252,7 +254,7 @@ class PagosView(QWidget):
 
         splitter.addWidget(left_widget)
 
-        # Panel Derecho: Ficha Interactiva del Policía
+        # Panel Derecho: Ficha Interactiva del Policía Seleccionado
         right_widget = self._build_panel_ficha()
         splitter.addWidget(right_widget)
 
@@ -269,7 +271,7 @@ class PagosView(QWidget):
         l.setContentsMargins(14, 14, 14, 14)
         l.setSpacing(10)
 
-        lbl_hdr = QLabel("👮 SISTEMA DEBE Y PAGÓ TICKETS")
+        lbl_hdr = QLabel("👮 FICHA DE CUENTA CORRIENTE DE TICKETS")
         lbl_hdr.setStyleSheet("font-size: 12px; font-weight: 800; color: #DC2626; letter-spacing: 0.5px;")
         l.addWidget(lbl_hdr)
 
@@ -286,48 +288,35 @@ class PagosView(QWidget):
         row_cards = QHBoxLayout()
         row_cards.setSpacing(6)
 
-        self.card_debe = self._create_mini_box("DEBE TICKETS", "0", "S/ 0.00", "#EF4444")
-        self.card_pago = self._create_mini_box("PAGÓ TICKETS", "0", "S/ 0.00", "#10B981")
-        self.card_total = self._create_mini_box("TOTAL TICKETS", "0", "S/ 0.00", "#38BDF8")
+        self.card_debe = self._create_mini_box("TOTAL QUE DEBE", "0", "S/ 0.00", "#EF4444")
+        self.card_pago = self._create_mini_box("TOTAL PAGADO", "0", "S/ 0.00", "#10B981")
+        self.card_saldo = self._create_mini_box("SALDO ACTUAL (DEBE)", "0", "S/ 0.00", "#F59E0B")
 
         row_cards.addWidget(self.card_debe)
         row_cards.addWidget(self.card_pago)
-        row_cards.addWidget(self.card_total)
+        row_cards.addWidget(self.card_saldo)
         l.addLayout(row_cards)
 
-        # Barra de progreso
-        lbl_prog = QLabel("Progreso de Pago:")
-        lbl_prog.setStyleSheet("color: #94A3B8; font-size: 11px; font-weight: 700; margin-top: 4px;")
-        l.addWidget(lbl_prog)
-
-        self.pbar_policia = QProgressBar()
-        self.pbar_policia.setRange(0, 100)
-        self.pbar_policia.setValue(100)
-        self.pbar_policia.setAlignment(Qt.AlignCenter)
-        self.pbar_policia.setFixedHeight(18)
-        self.pbar_policia.setStyleSheet("""
-            QProgressBar {
-                background: #1F2937;
-                color: #FFFFFF;
-                border: 1px solid #374151;
-                border-radius: 4px;
-                font-size: 10px;
-                font-weight: bold;
-            }
-            QProgressBar::chunk {
-                background-color: #10B981;
-                border-radius: 3px;
-            }
-        """)
-        l.addWidget(self.pbar_policia)
-
-        # Botones de Acción
+        # Botones de Acción Directa
         btn_box = QHBoxLayout()
         btn_box.setSpacing(8)
 
-        self.btn_cobrar_policia = QPushButton("💵 Cobrar / Pagó Tickets")
-        self.btn_cobrar_policia.setCursor(Qt.PointingHandCursor)
-        self.btn_cobrar_policia.setStyleSheet("""
+        self.btn_debe_tickets = QPushButton("➕ Debe Tickets")
+        self.btn_debe_tickets.setCursor(Qt.PointingHandCursor)
+        self.btn_debe_tickets.setStyleSheet("""
+            background-color: #DC2626;
+            color: #FFFFFF;
+            font-weight: 800;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+        """)
+        self.btn_debe_tickets.clicked.connect(self._on_registrar_debe)
+        btn_box.addWidget(self.btn_debe_tickets)
+
+        self.btn_pago_tickets = QPushButton("💵 Pagó Tickets")
+        self.btn_pago_tickets.setCursor(Qt.PointingHandCursor)
+        self.btn_pago_tickets.setStyleSheet("""
             background-color: #10B981;
             color: #FFFFFF;
             font-weight: 800;
@@ -335,39 +324,26 @@ class PagosView(QWidget):
             border-radius: 6px;
             font-size: 12px;
         """)
-        self.btn_cobrar_policia.clicked.connect(self._on_cobrar_seleccionado)
-        btn_box.addWidget(self.btn_cobrar_policia)
-
-        self.btn_asignar_policia = QPushButton("⚡ Ajustar Tickets")
-        self.btn_asignar_policia.setCursor(Qt.PointingHandCursor)
-        self.btn_asignar_policia.setStyleSheet("""
-            background-color: #18181B;
-            color: #E4E4E7;
-            font-weight: 700;
-            padding: 8px 12px;
-            border-radius: 6px;
-            border: 1px solid #3F3F46;
-            font-size: 12px;
-        """)
-        self.btn_asignar_policia.clicked.connect(self._on_asignar_seleccionado)
-        btn_box.addWidget(self.btn_asignar_policia)
+        self.btn_pago_tickets.clicked.connect(self._on_registrar_pago)
+        btn_box.addWidget(self.btn_pago_tickets)
 
         l.addLayout(btn_box)
 
-        # Historial de pagos del policía
-        lbl_hist = QLabel("Historial de Pagos de Tickets:")
+        # Historial de Movimientos del Policía
+        lbl_hist = QLabel("Historial de Movimientos (Debe y Pagos):")
         lbl_hist.setStyleSheet("color: #E4E4E7; font-size: 12px; font-weight: 700; margin-top: 6px;")
         l.addWidget(lbl_hist)
 
         self.tbl_historial_policia = QTableWidget()
-        self.tbl_historial_policia.setColumnCount(5)
-        self.tbl_historial_policia.setHorizontalHeaderLabels(["Fecha", "Tickets", "Monto", "Medio", "Acción"])
+        self.tbl_historial_policia.setColumnCount(6)
+        self.tbl_historial_policia.setHorizontalHeaderLabels(["Fecha", "Tipo", "Tickets", "Monto", "Detalle", "Acción"])
         self.tbl_historial_policia.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.tbl_historial_policia.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.tbl_historial_policia.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.tbl_historial_policia.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
-        self.tbl_historial_policia.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
-        self.tbl_historial_policia.setColumnWidth(4, 50)
+        self.tbl_historial_policia.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.tbl_historial_policia.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        self.tbl_historial_policia.horizontalHeader().setSectionResizeMode(5, QHeaderView.Fixed)
+        self.tbl_historial_policia.setColumnWidth(5, 50)
         self.tbl_historial_policia.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tbl_historial_policia.setSelectionBehavior(QTableWidget.SelectRows)
         l.addWidget(self.tbl_historial_policia)
@@ -394,6 +370,66 @@ class PagosView(QWidget):
         lbl_s.setObjectName("sub_val")
         lbl_s.setStyleSheet("color: #A1A1AA; font-size: 10px; font-weight: 600;")
         l.addWidget(lbl_s)
+
+        return w
+
+    def _build_tab_historial_pagados(self) -> QWidget:
+        w = QWidget()
+        l = QVBoxLayout(w)
+        l.setContentsMargins(12, 12, 12, 12)
+        l.setSpacing(8)
+
+        lbl_info = QLabel("🟢 <b>Lista General de Tickets Pagados:</b> Registro de todos los pagos realizados por el personal.")
+        lbl_info.setStyleSheet("background-color: #18181B; color: #10B981; border-left: 4px solid #10B981; padding: 8px 12px; border-radius: 4px;")
+        l.addWidget(lbl_info)
+
+        self.tbl_pagados_general = QTableWidget()
+        self.tbl_pagados_general.setColumnCount(7)
+        self.tbl_pagados_general.setHorizontalHeaderLabels([
+            "Fecha", "Código", "Policía / Nombre", "Tickets Pagados", "Monto Cobrado (S/)", "Medio de Pago", "Acción"
+        ])
+        self.tbl_pagados_general.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.tbl_pagados_general.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.tbl_pagados_general.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.tbl_pagados_general.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.tbl_pagados_general.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        self.tbl_pagados_general.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        self.tbl_pagados_general.horizontalHeader().setSectionResizeMode(6, QHeaderView.Fixed)
+        self.tbl_pagados_general.setColumnWidth(6, 60)
+        self.tbl_pagados_general.setAlternatingRowColors(True)
+        self.tbl_pagados_general.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tbl_pagados_general.setEditTriggers(QTableWidget.NoEditTriggers)
+        l.addWidget(self.tbl_pagados_general)
+
+        return w
+
+    def _build_tab_historial_deudas(self) -> QWidget:
+        w = QWidget()
+        l = QVBoxLayout(w)
+        l.setContentsMargins(12, 12, 12, 12)
+        l.setSpacing(8)
+
+        lbl_info = QLabel("🔴 <b>Lista General de Deudas (Debe Tickets):</b> Registro de todos los tickets fiados / adeudados.")
+        lbl_info.setStyleSheet("background-color: #18181B; color: #EF4444; border-left: 4px solid #EF4444; padding: 8px 12px; border-radius: 4px;")
+        l.addWidget(lbl_info)
+
+        self.tbl_deudas_general = QTableWidget()
+        self.tbl_deudas_general.setColumnCount(7)
+        self.tbl_deudas_general.setHorizontalHeaderLabels([
+            "Fecha", "Código", "Policía / Nombre", "Tickets que Debe", "Monto Deuda (S/)", "Observación", "Acción"
+        ])
+        self.tbl_deudas_general.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.tbl_deudas_general.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.tbl_deudas_general.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.tbl_deudas_general.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.tbl_deudas_general.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        self.tbl_deudas_general.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
+        self.tbl_deudas_general.horizontalHeader().setSectionResizeMode(6, QHeaderView.Fixed)
+        self.tbl_deudas_general.setColumnWidth(6, 60)
+        self.tbl_deudas_general.setAlternatingRowColors(True)
+        self.tbl_deudas_general.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tbl_deudas_general.setEditTriggers(QTableWidget.NoEditTriggers)
+        l.addWidget(self.tbl_deudas_general)
 
         return w
 
@@ -461,28 +497,21 @@ class PagosView(QWidget):
         self._render_tabla_policias()
 
     def cargar_datos(self):
-        if not self.current_mes_id:
-            m = self.mes_service.get_by_anio_mes(self.current_anio, self.current_mes)
-            if m:
-                self.current_mes_id = m.id
-            else:
-                return
-
-        # 1. Cargar datos de policías
-        self.policias_deudas = self.pago_service.get_resumen_deudas_policias(
-            mes_id=self.current_mes_id,
-            precio_ticket=self.precio_menu
-        )
+        # 1. Cargar cuentas independientes de tickets
+        self.resumen_cuentas = self.cuenta_service.get_resumen_cuentas()
         self._render_tabla_policias()
 
-        # 2. Cargar datos diarios
+        # 2. Cargar listas de pagos y deudas
+        self._render_listas_movimientos()
+
+        # 3. Cargar datos diarios
         self._cargar_datos_diarios()
 
     def _render_tabla_policias(self):
         busqueda = self.txt_busqueda.text().strip().upper()
-        filtrados: List[ResumenDeudaPolicia] = []
+        filtrados: List[ResumenCuentaPolicia] = []
 
-        for p in self.policias_deudas:
+        for p in self.resumen_cuentas:
             # Filtro texto (descarte automático)
             if busqueda:
                 full_text = f"{p.codigo} {p.apellidos} {p.nombres} {p.area} {p.sa_pnp or ''}".upper()
@@ -490,25 +519,23 @@ class PagosView(QWidget):
                     continue
 
             # Filtro chip
-            if self.active_chip == "DEUDA" and p.tickets_debidos <= 0:
+            if self.active_chip == "DEUDA" and p.saldo_tickets_debe <= 0:
                 continue
-            elif self.active_chip == "PARCIAL" and p.estado != "PARCIAL":
-                continue
-            elif self.active_chip == "PAGADO" and p.tickets_debidos > 0:
+            elif self.active_chip == "AL_DIA" and p.saldo_tickets_debe > 0:
                 continue
 
             filtrados.append(p)
 
-        # Actualizar KPIs de policías
-        tot_tk = sum(p.tickets_totales for p in self.policias_deudas)
-        tot_pag = sum(p.tickets_pagados for p in self.policias_deudas)
-        tot_deb = sum(p.tickets_debidos for p in self.policias_deudas)
-        tot_monto_deb = sum(p.monto_pendiente for p in self.policias_deudas)
+        # Actualizar KPIs globales
+        tot_debe = sum(p.tickets_debe_total for p in self.resumen_cuentas)
+        tot_pago = sum(p.tickets_pago_total for p in self.resumen_cuentas)
+        saldo_pend = sum(p.saldo_tickets_debe for p in self.resumen_cuentas if p.saldo_tickets_debe > 0)
+        monto_pend = sum(p.saldo_monto_debe for p in self.resumen_cuentas if p.saldo_monto_debe > 0)
 
-        self.lbl_pol_total_tk.setText(str(tot_tk))
-        self.lbl_pol_pagados.setText(str(tot_pag))
-        self.lbl_pol_debidos.setText(str(tot_deb))
-        self.lbl_pol_monto_deuda.setText(f"S/ {tot_monto_deb:,.2f}")
+        self.lbl_kpi_total_debe.setText(str(tot_debe))
+        self.lbl_kpi_total_pago.setText(str(tot_pago))
+        self.lbl_kpi_saldo_pend.setText(str(saldo_pend))
+        self.lbl_kpi_monto_deuda.setText(f"S/ {monto_pend:,.2f}")
 
         # Renderizar filas
         self.tbl_policias.setRowCount(len(filtrados))
@@ -516,70 +543,103 @@ class PagosView(QWidget):
 
         for r, p in enumerate(filtrados):
             self.tbl_policias.setItem(r, 0, QTableWidgetItem(p.codigo))
-            
-            item_nom = QTableWidgetItem(f"{p.apellidos}, {p.nombres}")
-            item_nom.setFont(QFont("Segoe UI", 9, QFont.Bold))
-            self.tbl_policias.setItem(r, 1, item_nom)
+
+            it_nom = QTableWidgetItem(f"{p.apellidos}, {p.nombres}")
+            it_nom.setFont(QFont("Segoe UI", 9, QFont.Bold))
+            self.tbl_policias.setItem(r, 1, it_nom)
 
             self.tbl_policias.setItem(r, 2, QTableWidgetItem(p.area))
 
-            # Total Tickets
-            it_tot = QTableWidgetItem(str(p.tickets_totales))
-            it_tot.setTextAlignment(Qt.AlignCenter)
-            self.tbl_policias.setItem(r, 3, it_tot)
+            it_deb_t = QTableWidgetItem(str(p.tickets_debe_total))
+            it_deb_t.setTextAlignment(Qt.AlignCenter)
+            self.tbl_policias.setItem(r, 3, it_deb_t)
 
-            # Pagó Tickets
-            it_pag = QTableWidgetItem(str(p.tickets_pagados))
-            it_pag.setTextAlignment(Qt.AlignCenter)
-            it_pag.setForeground(QColor("#10B981"))
-            self.tbl_policias.setItem(r, 4, it_pag)
+            it_pag_t = QTableWidgetItem(str(p.tickets_pago_total))
+            it_pag_t.setTextAlignment(Qt.AlignCenter)
+            it_pag_t.setForeground(QColor("#10B981"))
+            self.tbl_policias.setItem(r, 4, it_pag_t)
 
-            # Debe Tickets
-            it_deb = QTableWidgetItem(str(p.tickets_debidos))
-            it_deb.setTextAlignment(Qt.AlignCenter)
-            if p.tickets_debidos > 0:
-                it_deb.setForeground(QColor("#EF4444"))
-                it_deb.setFont(QFont("Segoe UI", 9, QFont.Bold))
-            self.tbl_policias.setItem(r, 5, it_deb)
+            it_sal = QTableWidgetItem(str(p.saldo_tickets_debe))
+            it_sal.setTextAlignment(Qt.AlignCenter)
+            if p.saldo_tickets_debe > 0:
+                it_sal.setForeground(QColor("#EF4444"))
+                it_sal.setFont(QFont("Segoe UI", 9, QFont.Bold))
+            elif p.saldo_tickets_debe == 0:
+                it_sal.setForeground(QColor("#10B981"))
+            self.tbl_policias.setItem(r, 5, it_sal)
 
-            # Monto Pagado
-            it_mpag = QTableWidgetItem(f"S/ {p.monto_pagado:.2f}")
-            it_mpag.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.tbl_policias.setItem(r, 6, it_mpag)
+            it_monto = QTableWidgetItem(f"S/ {p.saldo_monto_debe:.2f}")
+            it_monto.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            if p.saldo_monto_debe > 0:
+                it_monto.setForeground(QColor("#EF4444"))
+                it_monto.setFont(QFont("Segoe UI", 9, QFont.Bold))
+            self.tbl_policias.setItem(r, 6, it_monto)
 
-            # Deuda Pendiente
-            it_mdeb = QTableWidgetItem(f"S/ {p.monto_pendiente:.2f}")
-            it_mdeb.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            if p.monto_pendiente > 0:
-                it_mdeb.setForeground(QColor("#EF4444"))
-                it_mdeb.setFont(QFont("Segoe UI", 9, QFont.Bold))
-            self.tbl_policias.setItem(r, 7, it_mdeb)
+            it_est = QTableWidgetItem(p.estado)
+            it_est.setTextAlignment(Qt.AlignCenter)
+            if p.estado == "DEBE":
+                it_est.setForeground(QColor("#EF4444"))
+            else:
+                it_est.setForeground(QColor("#10B981"))
+            self.tbl_policias.setItem(r, 7, it_est)
 
-            # Botón de acción directa en tabla
-            btn_act = QPushButton("💵 Cobrar")
-            btn_act.setCursor(Qt.PointingHandCursor)
-            btn_act.setStyleSheet("""
-                QPushButton {
-                    background-color: #10B981;
-                    color: #FFFFFF;
-                    font-weight: bold;
-                    border-radius: 4px;
-                    padding: 3px 8px;
-                    font-size: 11px;
-                }
-                QPushButton:hover {
-                    background-color: #059669;
-                }
-            """)
-            btn_act.clicked.connect(lambda _, pol=p: self._abrir_modal_pago(pol))
-            self.tbl_policias.setCellWidget(r, 8, btn_act)
-
-        # Seleccionar primera fila si hay datos
+        # Seleccionar primero si existe
         if filtrados:
             self.tbl_policias.selectRow(0)
             self._actualizar_panel_ficha(filtrados[0])
         else:
             self._limpiar_panel_ficha()
+
+    def _render_listas_movimientos(self):
+        # 1. Lista de pagos
+        pagos = self.cuenta_service.get_movimientos_pagos()
+        self.tbl_pagados_general.setRowCount(len(pagos))
+        for r, m in enumerate(pagos):
+            self.tbl_pagados_general.setItem(r, 0, QTableWidgetItem(m.fecha))
+            self.tbl_pagados_general.setItem(r, 1, QTableWidgetItem(m.policia_codigo or "-"))
+            self.tbl_pagados_general.setItem(r, 2, QTableWidgetItem(m.policia_nombre_completo))
+
+            it_t = QTableWidgetItem(str(m.cantidad_tickets))
+            it_t.setTextAlignment(Qt.AlignCenter)
+            it_t.setForeground(QColor("#10B981"))
+            self.tbl_pagados_general.setItem(r, 3, it_t)
+
+            it_m = QTableWidgetItem(f"S/ {m.monto_total:.2f}")
+            it_m.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.tbl_pagados_general.setItem(r, 4, it_m)
+
+            self.tbl_pagados_general.setItem(r, 5, QTableWidgetItem(m.medio_pago or "EFECTIVO"))
+
+            btn_d = QPushButton("🗑️")
+            btn_d.setCursor(Qt.PointingHandCursor)
+            btn_d.setStyleSheet("background: transparent; color: #EF4444; font-size: 12px;")
+            btn_d.clicked.connect(lambda _, m_id=m.id: self._eliminar_movimiento(m_id))
+            self.tbl_pagados_general.setCellWidget(r, 6, btn_d)
+
+        # 2. Lista de deudas
+        deudas = self.cuenta_service.get_movimientos_deudas()
+        self.tbl_deudas_general.setRowCount(len(deudas))
+        for r, m in enumerate(deudas):
+            self.tbl_deudas_general.setItem(r, 0, QTableWidgetItem(m.fecha))
+            self.tbl_deudas_general.setItem(r, 1, QTableWidgetItem(m.policia_codigo or "-"))
+            self.tbl_deudas_general.setItem(r, 2, QTableWidgetItem(m.policia_nombre_completo))
+
+            it_t = QTableWidgetItem(str(m.cantidad_tickets))
+            it_t.setTextAlignment(Qt.AlignCenter)
+            it_t.setForeground(QColor("#EF4444"))
+            self.tbl_deudas_general.setItem(r, 3, it_t)
+
+            it_m = QTableWidgetItem(f"S/ {m.monto_total:.2f}")
+            it_m.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.tbl_deudas_general.setItem(r, 4, it_m)
+
+            self.tbl_deudas_general.setItem(r, 5, QTableWidgetItem(m.observacion or "-"))
+
+            btn_d = QPushButton("🗑️")
+            btn_d.setCursor(Qt.PointingHandCursor)
+            btn_d.setStyleSheet("background: transparent; color: #EF4444; font-size: 12px;")
+            btn_d.clicked.connect(lambda _, m_id=m.id: self._eliminar_movimiento(m_id))
+            self.tbl_deudas_general.setCellWidget(r, 6, btn_d)
 
     def _on_policia_selection_changed(self):
         sel = self.tbl_policias.selectedItems()
@@ -590,50 +650,44 @@ class PagosView(QWidget):
             pol = self.visible_policias[row]
             self._actualizar_panel_ficha(pol)
 
-    def _actualizar_panel_ficha(self, p: ResumenDeudaPolicia):
+    def _actualizar_panel_ficha(self, p: ResumenCuentaPolicia):
         self.selected_policia = p
         self.lbl_ficha_nombre.setText(f"{p.apellidos}, {p.nombres}")
         self.lbl_ficha_codigo_area.setText(f"Código: {p.codigo} | Área: {p.area} | Estado: {p.estado}")
 
-        # Actualizar mini-cards
-        self._update_mini_box(self.card_debe, f"{p.tickets_debidos} Tickets", f"S/ {p.monto_pendiente:.2f}")
-        self._update_mini_box(self.card_pago, f"{p.tickets_pagados} Tickets", f"S/ {p.monto_pagado:.2f}")
-        self._update_mini_box(self.card_total, f"{p.tickets_totales} Tickets", f"S/ {p.tickets_totales * self.precio_menu:.2f}")
+        self._update_mini_box(self.card_debe, f"{p.tickets_debe_total} Tickets", f"S/ {p.monto_debe_total:.2f}")
+        self._update_mini_box(self.card_pago, f"{p.tickets_pago_total} Tickets", f"S/ {p.monto_pago_total:.2f}")
+        self._update_mini_box(self.card_saldo, f"{p.saldo_tickets_debe} Tickets", f"S/ {p.saldo_monto_debe:.2f}")
 
-        # Progreso
-        pct = int((p.tickets_pagados / p.tickets_totales * 100)) if p.tickets_totales > 0 else 100
-        self.pbar_policia.setValue(pct)
-        self.pbar_policia.setFormat(f"{pct}%")
-        color = "#10B981" if pct == 100 else ("#F59E0B" if pct >= 50 else "#EF4444")
-        self.pbar_policia.setStyleSheet(f"""
-            QProgressBar {{
-                background: #1F2937;
-                color: #FFFFFF;
-                border: 1px solid #374151;
-                border-radius: 4px;
-                font-size: 10px;
-                font-weight: bold;
-            }}
-            QProgressBar::chunk {{
-                background-color: {color};
-                border-radius: 3px;
-            }}
-        """)
+        # Cargar historial del policía
+        movs = self.cuenta_service.get_movimientos_by_policia(p.policia_id)
+        self.tbl_historial_policia.setRowCount(len(movs))
+        for r, m in enumerate(movs):
+            self.tbl_historial_policia.setItem(r, 0, QTableWidgetItem(m.fecha))
 
-        # Cargar historial de pagos
-        hist = self.pago_service.get_historial_pagos_policia(p.policia_id, self.current_mes_id)
-        self.tbl_historial_policia.setRowCount(len(hist))
-        for r, item in enumerate(hist):
-            self.tbl_historial_policia.setItem(r, 0, QTableWidgetItem(item.fecha))
-            self.tbl_historial_policia.setItem(r, 1, QTableWidgetItem(str(item.tickets_pagados)))
-            self.tbl_historial_policia.setItem(r, 2, QTableWidgetItem(f"S/ {item.monto_pagado:.2f}"))
-            self.tbl_historial_policia.setItem(r, 3, QTableWidgetItem(item.medio_pago))
+            it_tipo = QTableWidgetItem("🔴 DEBE" if m.tipo_movimiento == "DEBE" else "🟢 PAGÓ")
+            if m.tipo_movimiento == "DEBE":
+                it_tipo.setForeground(QColor("#EF4444"))
+            else:
+                it_tipo.setForeground(QColor("#10B981"))
+            self.tbl_historial_policia.setItem(r, 1, it_tipo)
+
+            it_tk = QTableWidgetItem(str(m.cantidad_tickets))
+            it_tk.setTextAlignment(Qt.AlignCenter)
+            self.tbl_historial_policia.setItem(r, 2, it_tk)
+
+            it_m = QTableWidgetItem(f"S/ {m.monto_total:.2f}")
+            it_m.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.tbl_historial_policia.setItem(r, 3, it_m)
+
+            det = m.observacion or (f"Vía {m.medio_pago}" if m.tipo_movimiento == "PAGO" else "-")
+            self.tbl_historial_policia.setItem(r, 4, QTableWidgetItem(det))
 
             btn_del = QPushButton("🗑️")
             btn_del.setCursor(Qt.PointingHandCursor)
             btn_del.setStyleSheet("background: transparent; color: #EF4444; font-size: 12px;")
-            btn_del.clicked.connect(lambda _, p_id=item.id: self._eliminar_pago_hist(p_id))
-            self.tbl_historial_policia.setCellWidget(r, 4, btn_del)
+            btn_del.clicked.connect(lambda _, m_id=m.id: self._eliminar_movimiento(m_id))
+            self.tbl_historial_policia.setCellWidget(r, 5, btn_del)
 
     def _update_mini_box(self, card: QWidget, main_val: str, sub_val: str):
         lbl_m = card.findChild(QLabel, "main_val")
@@ -649,20 +703,44 @@ class PagosView(QWidget):
         self.lbl_ficha_codigo_area.setText("Código: - | Área: -")
         self._update_mini_box(self.card_debe, "0 Tickets", "S/ 0.00")
         self._update_mini_box(self.card_pago, "0 Tickets", "S/ 0.00")
-        self._update_mini_box(self.card_total, "0 Tickets", "S/ 0.00")
-        self.pbar_policia.setValue(100)
+        self._update_mini_box(self.card_saldo, "0 Tickets", "S/ 0.00")
         self.tbl_historial_policia.setRowCount(0)
 
-    def _abrir_modal_pago(self, pol: ResumenDeudaPolicia):
-        dlg = RegistrarPagoPoliciaDialog(pol, precio_ticket=self.precio_menu, parent=self)
+    def _on_registrar_debe(self):
+        if not self.selected_policia:
+            QMessageBox.information(self, "Aviso", "Seleccione un policía en la lista primero.")
+            return
+
+        dlg = RegistrarDeudaTicketDialog(self.selected_policia, precio_defecto=self.precio_menu, parent=self)
         if dlg.exec():
             data = dlg.get_data()
-            ok, msg, _ = self.pago_service.registrar_pago_policia(
-                policia_id=pol.policia_id,
-                mes_id=self.current_mes_id,
+            ok, msg, _ = self.cuenta_service.registrar_deuda(
+                policia_id=self.selected_policia.policia_id,
                 fecha=data["fecha"],
-                tickets_pagados=data["tickets_pagados"],
-                monto_pagado=data["monto_pagado"],
+                cantidad_tickets=data["cantidad_tickets"],
+                precio_unitario=data["precio_unitario"],
+                monto_total=data["monto_total"],
+                observacion=data["observacion"]
+            )
+            if ok:
+                ToastManager.show_success(msg, self)
+                self.cargar_datos()
+            else:
+                ToastManager.show_warning(msg, self)
+
+    def _on_registrar_pago(self):
+        if not self.selected_policia:
+            QMessageBox.information(self, "Aviso", "Seleccione un policía en la lista primero.")
+            return
+
+        dlg = RegistrarPagoCuentaDialog(self.selected_policia, precio_defecto=self.precio_menu, parent=self)
+        if dlg.exec():
+            data = dlg.get_data()
+            ok, msg, _ = self.cuenta_service.registrar_pago(
+                policia_id=self.selected_policia.policia_id,
+                fecha=data["fecha"],
+                cantidad_tickets=data["cantidad_tickets"],
+                monto_total=data["monto_total"],
                 medio_pago=data["medio_pago"],
                 observacion=data["observacion"]
             )
@@ -672,54 +750,15 @@ class PagosView(QWidget):
             else:
                 ToastManager.show_warning(msg, self)
 
-    def _on_cobrar_seleccionado(self):
-        if self.selected_policia:
-            self._abrir_modal_pago(self.selected_policia)
-        else:
-            QMessageBox.information(self, "Aviso", "Seleccione un policía en la lista primero.")
-
-    def _on_asignar_seleccionado(self):
-        if not self.selected_policia:
-            QMessageBox.information(self, "Aviso", "Seleccione un policía en la lista primero.")
-            return
-
-        pol = self.selected_policia
-        num_dias = 30
-        mes = self.mes_service.get_by_id(self.current_mes_id) if self.current_mes_id else None
-        if mes:
-            import calendar
-            num_dias = calendar.monthrange(mes.anio, mes.mes)[1]
-
-        dlg = AsignarTicketsPoliciaDialog(
-            policia_nombre=f"{pol.apellidos}, {pol.nombres}",
-            codigo=pol.codigo,
-            tickets_actuales=pol.tickets_totales,
-            num_dias_mes=num_dias,
-            parent=self
-        )
-        if dlg.exec():
-            nueva_cant = dlg.get_cantidad()
-            ok, msg = self.ticket_service.asignar_cantidad_tickets_policia(
-                mes_id=self.current_mes_id,
-                policia_id=pol.policia_id,
-                cantidad=nueva_cant,
-                local_id=self.current_local
-            )
-            if ok:
-                ToastManager.show_success(msg, self)
-                self.cargar_datos()
-            else:
-                ToastManager.show_warning(msg, self)
-
-    def _eliminar_pago_hist(self, pago_id: int):
+    def _eliminar_movimiento(self, mov_id: int):
         resp = QMessageBox.question(
             self,
             "Confirmar Eliminación",
-            "¿Desea anular este registro de pago de tickets? Se restaurará la deuda correspondiente.",
+            "¿Desea anular este registro de ticket/pago?",
             QMessageBox.Yes | QMessageBox.No
         )
         if resp == QMessageBox.Yes:
-            ok, msg = self.pago_service.eliminar_pago_policia(pago_id)
+            ok, msg = self.cuenta_service.eliminar_movimiento(mov_id)
             if ok:
                 ToastManager.show_success(msg, self)
                 self.cargar_datos()

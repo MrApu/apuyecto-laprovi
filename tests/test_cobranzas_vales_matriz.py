@@ -8,9 +8,11 @@ from services.mes_service import MesService
 from services.pago_service import PagoService
 from services.vale_service import ValeService
 from services.ticket_service import TicketService
+from services.cuenta_ticket_service import CuentaTicketService
 from models.policia import Policia
 from models.policia_pago import PoliciaPagoTicket
 from models.vale_policia import ValePolicia
+from models.cuenta_ticket import MovimientoTicket, ResumenCuentaPolicia
 
 @pytest.fixture
 def temp_db(tmp_path):
@@ -143,3 +145,69 @@ def test_matriz_tickets_asignacion_rapida_y_sincronizacion(temp_db):
         assert dias_p.get(d) == 1
     for d in range(19, num_dias + 1):
         assert dias_p.get(d, 0) == 0
+
+def test_cuentas_tickets_independiente_de_matriz_policial(temp_db):
+    pol_repo = PoliciaRepository(temp_db)
+    cuenta_service = CuentaTicketService(policia_repo=pol_repo)
+
+    p_id = pol_repo.create(Policia(codigo="POL-99", apellidos="BENITEZ", nombres="LUCAS", area="PATRULLAJE"))
+
+    # Inicialmente saldo en 0
+    res = cuenta_service.get_resumen_policia_individual(p_id)
+    assert res.saldo_tickets_debe == 0
+    assert res.estado == "AL DÍA"
+
+    # 1. Registrar que DEBE 5 tickets fiados
+    ok_d, msg_d, mov_debe_id = cuenta_service.registrar_deuda(
+        policia_id=p_id,
+        fecha="2026-10-25",
+        cantidad_tickets=5,
+        precio_unitario=12.0,
+        observacion="5 tickets fiados almuerzo"
+    )
+    assert ok_d
+    assert mov_debe_id is not None
+
+    # Verificar que aparece en la lista de deudores con 5 tickets que debe
+    res_debe = cuenta_service.get_resumen_policia_individual(p_id)
+    assert res_debe.tickets_debe_total == 5
+    assert res_debe.tickets_pago_total == 0
+    assert res_debe.saldo_tickets_debe == 5
+    assert res_debe.saldo_monto_debe == 60.0
+    assert res_debe.estado == "DEBE"
+
+    # Verificar que aparece en la lista general de deudas
+    deudas = cuenta_service.get_movimientos_deudas(busqueda="BENITEZ")
+    assert len(deudas) == 1
+    assert deudas[0].cantidad_tickets == 5
+
+    # 2. Registrar que PAGÓ 2 tickets
+    ok_p, msg_p, mov_pago_id = cuenta_service.registrar_pago(
+        policia_id=p_id,
+        fecha="2026-10-26",
+        cantidad_tickets=2,
+        monto_total=24.0,
+        medio_pago="YAPE",
+        observacion="Abono parcial 2 tickets"
+    )
+    assert ok_p
+
+    # Verificar saldo actualizado: Debe 3 tickets (S/ 36.00)
+    res_post = cuenta_service.get_resumen_policia_individual(p_id)
+    assert res_post.tickets_debe_total == 5
+    assert res_post.tickets_pago_total == 2
+    assert res_post.saldo_tickets_debe == 3
+    assert res_post.saldo_monto_debe == 36.0
+
+    # Verificar que el pago aparece en la lista general de pagados
+    pagos = cuenta_service.get_movimientos_pagos(busqueda="BENITEZ")
+    assert len(pagos) == 1
+    assert pagos[0].cantidad_tickets == 2
+    assert pagos[0].monto_total == 24.0
+
+    # 3. Eliminar movimiento erróneo
+    ok_del, msg_del = cuenta_service.eliminar_movimiento(mov_pago_id)
+    assert ok_del
+    res_del = cuenta_service.get_resumen_policia_individual(p_id)
+    assert res_del.saldo_tickets_debe == 5
+

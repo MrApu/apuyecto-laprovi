@@ -53,6 +53,8 @@ def test_all_views_have_no_edit_triggers():
     assert v_pg.table.editTriggers() == QTableWidget.NoEditTriggers
     assert v_pg.tbl_policias.editTriggers() == QTableWidget.NoEditTriggers
     assert v_pg.tbl_historial_policia.editTriggers() == QTableWidget.NoEditTriggers
+    assert v_pg.tbl_pagados_general.editTriggers() == QTableWidget.NoEditTriggers
+    assert v_pg.tbl_deudas_general.editTriggers() == QTableWidget.NoEditTriggers
 
     # 8. TicketsPoliciaView
     v_tp = TicketsPoliciaView()

@@ -254,3 +254,21 @@ CREATE TABLE IF NOT EXISTS vales_policias (
 CREATE INDEX IF NOT EXISTS idx_vales_policias_policia ON vales_policias(policia_id);
 CREATE INDEX IF NOT EXISTS idx_vales_policias_fecha ON vales_policias(fecha);
 
+CREATE TABLE IF NOT EXISTS policias_cuentas_tickets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    policia_id INTEGER NOT NULL,
+    fecha TEXT NOT NULL,
+    tipo_movimiento TEXT NOT NULL CHECK (tipo_movimiento IN ('DEBE', 'PAGO')),
+    cantidad_tickets INTEGER NOT NULL CHECK (cantidad_tickets > 0),
+    precio_unitario REAL NOT NULL DEFAULT 12.0 CHECK (precio_unitario >= 0),
+    monto_total REAL NOT NULL DEFAULT 0.0 CHECK (monto_total >= 0),
+    medio_pago TEXT DEFAULT 'EFECTIVO',
+    observacion TEXT,
+    fecha_registro TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(policia_id) REFERENCES policias(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_cuentas_tickets_policia ON policias_cuentas_tickets(policia_id);
+CREATE INDEX IF NOT EXISTS idx_cuentas_tickets_tipo ON policias_cuentas_tickets(tipo_movimiento);
+CREATE INDEX IF NOT EXISTS idx_cuentas_tickets_fecha ON policias_cuentas_tickets(fecha);
+
+
