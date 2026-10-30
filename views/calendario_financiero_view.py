@@ -26,6 +26,13 @@ class FloatingMiniReportPopup(QFrame):
     """
     Mini-reporte flotante transparente y elegante que aparece al señalar
     un día del calendario con el mouse y desaparece al salir.
+    Incluye:
+    - Venta del Local (Efectivo y Yape)
+    - Cantidad de Tickets del día y suma de solo tickets
+    - Venta Total combinada
+    - Egresos Operativos y Saldo
+    - Resumen de quiénes pagaron tickets en el día y quiénes deben tickets
+    - Botón rápido para copiar el reporte del día directo a WhatsApp
     """
     def __init__(self, parent=None):
         super().__init__(parent, Qt.ToolTip | Qt.FramelessWindowHint | Qt.WindowDoesNotAcceptFocus)
@@ -34,20 +41,22 @@ class FloatingMiniReportPopup(QFrame):
         self.setStyleSheet("""
             QFrame#MiniReport {
                 background-color: #0F172A;
-                border: 1px solid #6366F1;
+                border: 2px solid #DC2626;
                 border-radius: 10px;
                 padding: 12px;
             }
         """)
         self.setObjectName("MiniReport")
+        self.current_data: Dict[str, Any] = {}
+        self.current_sede: str = ""
 
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(14, 12, 14, 12)
-        self.layout.setSpacing(6)
+        self.layout.setSpacing(5)
 
         # Header: Date & Sede
         self.lbl_fecha = QLabel()
-        self.lbl_fecha.setStyleSheet("color: #38BDF8; font-size: 13px; font-weight: 800;")
+        self.lbl_fecha.setStyleSheet("color: #FFFFFF; font-size: 13px; font-weight: 800;")
         self.lbl_sede = QLabel()
         self.lbl_sede.setStyleSheet("color: #94A3B8; font-size: 11px; font-weight: bold;")
         self.layout.addWidget(self.lbl_fecha)
@@ -61,16 +70,23 @@ class FloatingMiniReportPopup(QFrame):
         lbl_v_title.setStyleSheet("color: #10B981; font-size: 11px; font-weight: 800; letter-spacing: 0.5px;")
         self.layout.addWidget(lbl_v_title)
 
+        self.lbl_venta_local = QLabel()
+        self.lbl_venta_local.setStyleSheet("color: #38BDF8; font-size: 11px; font-weight: 700;")
+        self.layout.addWidget(self.lbl_venta_local)
+
         self.lbl_efectivo = QLabel()
         self.lbl_yape = QLabel()
-        self.lbl_tickets = QLabel()
-        self.lbl_venta_total = QLabel()
-
-        for lbl in [self.lbl_efectivo, self.lbl_yape, self.lbl_tickets]:
-            lbl.setStyleSheet("color: #E2E8F0; font-size: 11px;")
+        for lbl in [self.lbl_efectivo, self.lbl_yape]:
+            lbl.setStyleSheet("color: #CBD5E1; font-size: 10px;")
             self.layout.addWidget(lbl)
 
-        self.lbl_venta_total.setStyleSheet("color: #10B981; font-size: 12px; font-weight: 800; padding-top: 2px;")
+        # Sección Tickets del Día separada
+        self.lbl_tickets = QLabel()
+        self.lbl_tickets.setStyleSheet("color: #FBBF24; font-size: 11px; font-weight: 800; padding-top: 2px;")
+        self.layout.addWidget(self.lbl_tickets)
+
+        self.lbl_venta_total = QLabel()
+        self.lbl_venta_total.setStyleSheet("color: #10B981; font-size: 12px; font-weight: 900; padding-top: 2px;")
         self.layout.addWidget(self.lbl_venta_total)
 
         # Divider
@@ -87,10 +103,10 @@ class FloatingMiniReportPopup(QFrame):
         self.lbl_egresos_total = QLabel()
 
         for lbl in [self.lbl_compras, self.lbl_gastos, self.lbl_personal]:
-            lbl.setStyleSheet("color: #E2E8F0; font-size: 11px;")
+            lbl.setStyleSheet("color: #CBD5E1; font-size: 10px;")
             self.layout.addWidget(lbl)
 
-        self.lbl_egresos_total.setStyleSheet("color: #F43F5E; font-size: 12px; font-weight: 800; padding-top: 2px;")
+        self.lbl_egresos_total.setStyleSheet("color: #F43F5E; font-size: 12px; font-weight: 800; padding-top: 1px;")
         self.layout.addWidget(self.lbl_egresos_total)
 
         # Divider
@@ -98,15 +114,29 @@ class FloatingMiniReportPopup(QFrame):
 
         # Balance Section
         self.lbl_saldo = QLabel()
-        self.lbl_saldo.setStyleSheet("font-size: 13px; font-weight: 800;")
+        self.lbl_saldo.setStyleSheet("font-size: 12px; font-weight: 800;")
         self.layout.addWidget(self.lbl_saldo)
 
-        self.lbl_rentabilidad = QLabel()
-        self.lbl_rentabilidad.setStyleSheet("color: #F59E0B; font-size: 11px; font-weight: bold;")
-        self.layout.addWidget(self.lbl_rentabilidad)
+        # Divider
+        self.layout.addWidget(self._create_divider())
 
-        lbl_hint = QLabel("💡 Doble clic para abrir bitácora completa")
-        lbl_hint.setStyleSheet("color: #64748B; font-size: 10px; font-style: italic; padding-top: 2px;")
+        # Sección Resumen de Quiénes Pagaron y Quiénes Deben en el Día
+        lbl_pol_title = QLabel("👮 COBRANZAS DEL DÍA (QUIÉNES PAGARON / DEBEN)")
+        lbl_pol_title.setStyleSheet("color: #E2E8F0; font-size: 11px; font-weight: 800; letter-spacing: 0.5px;")
+        self.layout.addWidget(lbl_pol_title)
+
+        self.lbl_pagaron = QLabel()
+        self.lbl_pagaron.setStyleSheet("color: #34D399; font-size: 11px; font-weight: 700;")
+        self.lbl_pagaron.setWordWrap(True)
+        self.layout.addWidget(self.lbl_pagaron)
+
+        self.lbl_deben = QLabel()
+        self.lbl_deben.setStyleSheet("color: #F87171; font-size: 11px; font-weight: 700;")
+        self.lbl_deben.setWordWrap(True)
+        self.layout.addWidget(self.lbl_deben)
+
+        lbl_hint = QLabel("💡 Doble clic para abrir bitácora | 📲 Use 'WhatsApp Día' para enviar este reporte")
+        lbl_hint.setStyleSheet("color: #64748B; font-size: 9px; font-style: italic; padding-top: 3px;")
         self.layout.addWidget(lbl_hint)
 
     def _create_divider(self) -> QFrame:
@@ -117,6 +147,8 @@ class FloatingMiniReportPopup(QFrame):
         return line
 
     def set_data(self, data: Dict[str, Any], sede_name: str):
+        self.current_data = data
+        self.current_sede = sede_name
         fecha_str = data.get("fecha", "")
         dia_sem = data.get("dia_semana", "")
         try:
@@ -130,14 +162,19 @@ class FloatingMiniReportPopup(QFrame):
 
         efectivo = data.get("efectivo", 0.0)
         yape = data.get("yape", 0.0)
+        venta_local = data.get("venta_local", round(efectivo + yape, 2))
         cant_tk = data.get("cantidad_tickets", 0)
         v_tk = data.get("venta_tickets", 0.0)
         v_tot = data.get("venta_total", 0.0)
 
-        self.lbl_efectivo.setText(f"  • Efectivo:  S/ {efectivo:,.2f}")
-        self.lbl_yape.setText(f"  • Yape/Digital:  S/ {yape:,.2f}")
-        self.lbl_tickets.setText(f"  • Tickets PNP ({cant_tk}):  S/ {v_tk:,.2f}")
-        self.lbl_venta_total.setText(f"  ➜ TOTAL VENTA:  S/ {v_tot:,.2f}")
+        # Venta del Local separada
+        self.lbl_venta_local.setText(f"  🏪 Venta Local (Mostrador): S/ {venta_local:,.2f}")
+        self.lbl_efectivo.setText(f"     • Efectivo:  S/ {efectivo:,.2f}")
+        self.lbl_yape.setText(f"     • Yape / Digital:  S/ {yape:,.2f}")
+
+        # Cuántos tickets hay en el día y cuánto suma solo tickets
+        self.lbl_tickets.setText(f"  👮 Solo Tickets PNP ({cant_tk} tk): S/ {v_tk:,.2f}")
+        self.lbl_venta_total.setText(f"  ➜ TOTAL GENERAL VENTA: S/ {v_tot:,.2f}")
 
         compras = data.get("compras", 0.0)
         gastos = data.get("gastos", 0.0)
@@ -153,16 +190,33 @@ class FloatingMiniReportPopup(QFrame):
         signo = "+" if saldo > 0 else ""
         if saldo > 0:
             self.lbl_saldo.setText(f"⚖️ SALDO NETO:  {signo}S/ {saldo:,.2f}")
-            self.lbl_saldo.setStyleSheet("color: #10B981; font-size: 13px; font-weight: 800;")
+            self.lbl_saldo.setStyleSheet("color: #10B981; font-size: 12px; font-weight: 800;")
         elif saldo < 0:
             self.lbl_saldo.setText(f"⚖️ SALDO NETO:  S/ {saldo:,.2f}")
-            self.lbl_saldo.setStyleSheet("color: #F43F5E; font-size: 13px; font-weight: 800;")
+            self.lbl_saldo.setStyleSheet("color: #F43F5E; font-size: 12px; font-weight: 800;")
         else:
             self.lbl_saldo.setText(f"⚖️ SALDO NETO:  S/ 0.00")
-            self.lbl_saldo.setStyleSheet("color: #94A3B8; font-size: 13px; font-weight: 800;")
+            self.lbl_saldo.setStyleSheet("color: #94A3B8; font-size: 12px; font-weight: 800;")
 
-        rent = round((saldo / v_tot * 100.0), 1) if v_tot > 0 else 0.0
-        self.lbl_rentabilidad.setText(f"📊 Margen Neto: {rent:.1f}%")
+        # Resumen de quiénes pagaron y quiénes deben
+        pagaron_list = data.get("policias_pagaron", [])
+        deben_list = data.get("policias_deben", [])
+
+        if pagaron_list:
+            nombres_pag = ", ".join([f"{p.get('nombre') or p.get('policia', 'Policía')} ({p.get('tickets', 0)} tk - S/{p.get('monto', 0):.0f})" for p in pagaron_list[:4]])
+            if len(pagaron_list) > 4:
+                nombres_pag += f" y {len(pagaron_list) - 4} más..."
+            self.lbl_pagaron.setText(f"  🟢 Pagaron ({len(pagaron_list)}): {nombres_pag}")
+        else:
+            self.lbl_pagaron.setText("  🟢 Pagaron: Ninguno registrado hoy")
+
+        if deben_list:
+            nombres_deb = ", ".join([f"{p.get('nombre') or p.get('policia', 'Policía')} ({p.get('tickets', 0)} tk - S/{p.get('monto', 0):.0f})" for p in deben_list[:4]])
+            if len(deben_list) > 4:
+                nombres_deb += f" y {len(deben_list) - 4} más..."
+            self.lbl_deben.setText(f"  🔴 Deben ({len(deben_list)}): {nombres_deb}")
+        else:
+            self.lbl_deben.setText("  🔴 Deben: Ninguno registrado hoy")
 
         self.adjustSize()
 
@@ -185,7 +239,7 @@ class DayTileWidget(QFrame):
 
     def _init_ui(self):
         self.setFrameShape(QFrame.StyledPanel)
-        self.setMinimumHeight(105)
+        self.setMinimumHeight(115)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         layout = QVBoxLayout(self)
@@ -243,23 +297,28 @@ class DayTileWidget(QFrame):
 
         layout.addLayout(h_box)
 
-        # Financial values
+        # Financial values & tickets breakdown
         if self.data:
             v_tot = self.data.get("venta_total", 0.0)
-            e_tot = self.data.get("total_egresos", 0.0)
             cant_tk = self.data.get("cantidad_tickets", 0)
+            v_tk = self.data.get("venta_tickets", 0.0)
+            v_local = self.data.get("venta_local", 0.0)
 
-            lbl_v = QLabel(f"📈 S/ {v_tot:,.2f}")
+            # Venta Total
+            lbl_v = QLabel(f"📈 Total: S/ {v_tot:,.2f}")
             lbl_v.setStyleSheet("color: #10B981; font-size: 11px; font-weight: 700;")
             layout.addWidget(lbl_v)
 
-            lbl_e = QLabel(f"📉 S/ {e_tot:,.2f}")
-            lbl_e.setStyleSheet("color: #F43F5E; font-size: 11px; font-weight: 600;")
-            layout.addWidget(lbl_e)
+            # Desglose Venta Local vs Tickets
+            if v_local > 0 or cant_tk > 0:
+                lbl_loc = QLabel(f"🏪 Local: S/ {v_local:,.0f}")
+                lbl_loc.setStyleSheet("color: #38BDF8; font-size: 10px; font-weight: 600;")
+                layout.addWidget(lbl_loc)
 
+            # Tickets y suma de solo tickets
             if cant_tk > 0:
-                lbl_tk = QLabel(f"👮 {cant_tk} tk")
-                lbl_tk.setStyleSheet("color: #818CF8; font-size: 10px; font-weight: 600;")
+                lbl_tk = QLabel(f"👮 {cant_tk} tk = S/ {v_tk:,.0f}")
+                lbl_tk.setStyleSheet("color: #FBBF24; font-size: 10px; font-weight: 700;")
                 layout.addWidget(lbl_tk)
         else:
             lbl_nodata = QLabel("Sin mov.")
@@ -271,11 +330,7 @@ class DayTileWidget(QFrame):
     def enterEvent(self, event):
         if self.data and self.popup:
             self.popup.set_data(self.data, self.sede_name)
-            global_pos = self.mapToGlobal(QPoint(self.width() + 10, -20))
-            screen_geom = self.screen().geometry() if self.screen() else None
-            if screen_geom and (global_pos.x() + 280 > screen_geom.right()):
-                global_pos = self.mapToGlobal(QPoint(-290, -20))
-            self.popup.move(global_pos)
+            self._position_popup_safe()
             self.popup.show()
         super().enterEvent(event)
 
@@ -283,6 +338,39 @@ class DayTileWidget(QFrame):
         if self.popup:
             self.popup.hide()
         super().leaveEvent(event)
+
+    def _position_popup_safe(self):
+        """
+        Garantiza que el reporte emergente esté en todo momento visible sobre la pantalla,
+        evitando que en los días finales (semanas inferiores o columnas derechas) se corte.
+        """
+        popup_w = max(self.popup.width(), 340)
+        popup_h = max(self.popup.height(), 400)
+
+        screen = self.screen()
+        screen_geom = screen.availableGeometry() if screen else QApplication.primaryScreen().availableGeometry()
+
+        # Intentar colocarlo a la derecha de la celda
+        target_pos = self.mapToGlobal(QPoint(self.width() + 10, -20))
+
+        # Si se sale por el borde derecho, colocar a la izquierda
+        if (target_pos.x() + popup_w) > screen_geom.right() - 10:
+            target_pos.setX(self.mapToGlobal(QPoint(0, 0)).x() - popup_w - 10)
+
+        # Si se sale por el borde inferior (días finales del mes), subir el popup
+        if (target_pos.y() + popup_h) > screen_geom.bottom() - 10:
+            overflow = (target_pos.y() + popup_h) - (screen_geom.bottom() - 10)
+            target_pos.setY(target_pos.y() - overflow)
+
+        # Si se sale por arriba, acotar a la parte superior
+        if target_pos.y() < screen_geom.top() + 10:
+            target_pos.setY(screen_geom.top() + 10)
+
+        # Si se sale por la izquierda
+        if target_pos.x() < screen_geom.left() + 10:
+            target_pos.setX(screen_geom.left() + 10)
+
+        self.popup.move(target_pos)
 
     def mouseDoubleClickEvent(self, event):
         if self.dia:
@@ -384,11 +472,12 @@ class CalendarioFinancieroView(QWidget):
     """
     Vista de Calendario Financiero interactivo con:
     - Cuadrícula visual mensual de 7 columnas (Lunes a Domingo).
-    - Mini-Reporte flotante con desglose completo al pasar el mouse por cada día.
+    - Desglose claro de cuántos tickets hay en el día y cuánto suma solo tickets,
+      separado de la venta propia del local.
+    - Mini-Reporte flotante que se mantiene en pantalla en todo momento sin cortarse en los días finales.
+    - Resumen de quiénes pagaron tickets y quiénes deben en el día al pasar el mouse.
+    - Transcripción completa del reporte a mensaje de WhatsApp (diario y mensual).
     - Drill-Down al hacer doble clic sobre cualquier día para ver la bitácora completa.
-    - Botón 1-Clic para copiar el reporte mensual o diario a WhatsApp.
-    - Botón de Gráfica Financiera mensual en Alta Definición.
-    - Alternancia fluida entre Vista Cuadrícula Calendario y Vista Tabla Detallada.
     """
     def __init__(self, financiero_service: Optional[FinancieroService] = None, mes_service: Optional[MesService] = None, parent=None):
         super().__init__(parent)
@@ -422,7 +511,7 @@ class CalendarioFinancieroView(QWidget):
 
         # 1. Header Bar
         header = QHBoxLayout()
-        title = QLabel("📅 CALENDARIO FINANCIERO Y SALDO DIARIO")
+        title = QLabel("📅 CALENDARIO FINANCIERO Y CONTROL DE TICKETS")
         title.setFont(QFont("Segoe UI", 16, QFont.Bold))
         title.setStyleSheet("color: #F8FAFC; font-weight: 800; font-size: 18px;")
         header.addWidget(title)
@@ -430,7 +519,7 @@ class CalendarioFinancieroView(QWidget):
         self.lbl_local_badge = QLabel(f"📍 Sede: {LOCAL_NAMES.get(self.current_local, 'RESTAURANTE')}")
         self.lbl_local_badge.setStyleSheet("""
             background: #1E293B;
-            color: #38BDF8;
+            color: #DC2626;
             padding: 5px 12px;
             border-radius: 6px;
             font-weight: 700;
@@ -441,9 +530,11 @@ class CalendarioFinancieroView(QWidget):
 
         header.addStretch()
 
-        # Botón Copiar WhatsApp
-        self.btn_whatsapp = QPushButton("📲 WhatsApp")
-        self.btn_whatsapp.setStyleSheet("""
+        # Botón Copiar WhatsApp Mes
+        self.btn_whatsapp_mes = QPushButton("📲 WhatsApp Mes")
+        self.btn_whatsapp_mes.setToolTip("Copiar el balance financiero y de tickets mensual a WhatsApp")
+        self.btn_whatsapp_mes.setCursor(Qt.PointingHandCursor)
+        self.btn_whatsapp_mes.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #047857, stop:1 #10B981);
                 color: #FFFFFF;
@@ -457,8 +548,8 @@ class CalendarioFinancieroView(QWidget):
                 border: 1px solid #6EE7B7;
             }
         """)
-        self.btn_whatsapp.clicked.connect(self._copiar_whatsapp_mes)
-        header.addWidget(self.btn_whatsapp)
+        self.btn_whatsapp_mes.clicked.connect(self._copiar_whatsapp_mes)
+        header.addWidget(self.btn_whatsapp_mes)
 
         # View Mode Switcher Buttons
         self.btn_grid_mode = QPushButton("📅 Cuadrícula")
@@ -474,9 +565,9 @@ class CalendarioFinancieroView(QWidget):
                 font-weight: 700;
             }
             QPushButton:checked {
-                background: #6366F1;
+                background: #DC2626;
                 color: white;
-                border: 1px solid #818CF8;
+                border: 1px solid #EF4444;
             }
         """)
 
@@ -492,9 +583,9 @@ class CalendarioFinancieroView(QWidget):
                 font-weight: 700;
             }
             QPushButton:checked {
-                background: #6366F1;
+                background: #DC2626;
                 color: white;
-                border: 1px solid #818CF8;
+                border: 1px solid #EF4444;
             }
         """)
 
@@ -543,14 +634,16 @@ class CalendarioFinancieroView(QWidget):
         # 2. KPI Summary Cards
         kpi_layout = QHBoxLayout()
         self.card_ventas = self._create_kpi_card("Total Ventas", "S/ 0.00", "#10B981")
+        self.card_local = self._create_kpi_card("Venta Solo Local", "S/ 0.00", "#38BDF8")
+        self.card_tickets = self._create_kpi_card("Solo Tickets PNP", "0 tk (S/ 0.00)", "#FBBF24")
         self.card_egresos = self._create_kpi_card("Total Egresos", "S/ 0.00", "#F43F5E")
-        self.card_saldo = self._create_kpi_card("Saldo Neto", "S/ 0.00", "#38BDF8")
-        self.card_rentabilidad = self._create_kpi_card("Rentabilidad", "0.0%", "#F59E0B")
+        self.card_saldo = self._create_kpi_card("Saldo Neto", "S/ 0.00", "#FFFFFF")
 
         kpi_layout.addWidget(self.card_ventas)
+        kpi_layout.addWidget(self.card_local)
+        kpi_layout.addWidget(self.card_tickets)
         kpi_layout.addWidget(self.card_egresos)
         kpi_layout.addWidget(self.card_saldo)
-        kpi_layout.addWidget(self.card_rentabilidad)
         main_layout.addLayout(kpi_layout)
 
         # 3. Calendar Grid Container (Visual Mode)
@@ -576,13 +669,16 @@ class CalendarioFinancieroView(QWidget):
         # 4. Detailed Table Container (Table Mode)
         self.table = QTableWidget()
         headers = [
-            "Fecha", "Día", "Semana", "Efectivo (S/)", "Yape (S/)", "Tickets (Cant)",
-            "Venta Tickets (S/)", "Venta Total (S/)", "Compras (S/)", "Gastos (S/)",
-            "Personal (S/)", "Total Egresos (S/)", "SALDO DEL DÍA (S/)"
+            "Fecha", "Día", "Semana", "Venta Local (S/)", "Tickets (Cant)", "Venta Tickets (S/)",
+            "VENTA TOTAL (S/)", "Compras (S/)", "Gastos (S/)", "Personal (S/)", "Total Egresos (S/)",
+            "SALDO NETO (S/)", "Acción WhatsApp"
         ]
         self.table.setColumnCount(len(headers))
         self.table.setHorizontalHeaderLabels(headers)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(12, QHeaderView.Fixed)
+        self.table.setColumnWidth(12, 110)
         self.table.setAlternatingRowColors(True)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -599,10 +695,10 @@ class CalendarioFinancieroView(QWidget):
         l.setContentsMargins(12, 8, 12, 8)
         l.setSpacing(2)
         lbl_t = QLabel(title.upper())
-        lbl_t.setStyleSheet("color: #94A3B8; font-size: 11px; font-weight: 800; letter-spacing: 0.5px;")
+        lbl_t.setStyleSheet("color: #94A3B8; font-size: 10px; font-weight: 800; letter-spacing: 0.5px;")
         lbl_v = QLabel(value)
         lbl_v.setObjectName("val")
-        lbl_v.setStyleSheet(f"color: {border_color}; font-size: 18px; font-weight: 800;")
+        lbl_v.setStyleSheet(f"color: {border_color}; font-size: 16px; font-weight: 800;")
         l.addWidget(lbl_t)
         l.addWidget(lbl_v)
         return w
@@ -632,6 +728,59 @@ class CalendarioFinancieroView(QWidget):
             dlg.exec()
             self.refresh_data()
 
+    def _copiar_whatsapp_dia(self, d: Dict[str, Any]):
+        sede_name = LOCAL_NAMES.get(self.current_local, self.current_local.upper())
+        fecha_str = d.get("fecha", "")
+        dia_sem = d.get("dia_semana", "")
+        v_local = d.get("venta_local", 0.0)
+        efectivo = d.get("efectivo", 0.0)
+        yape = d.get("yape", 0.0)
+        cant_tk = d.get("cantidad_tickets", 0)
+        v_tk = d.get("venta_tickets", 0.0)
+        v_tot = d.get("venta_total", 0.0)
+        compras = d.get("compras", 0.0)
+        gastos = d.get("gastos", 0.0)
+        personal = d.get("personal", 0.0)
+        e_tot = d.get("total_egresos", 0.0)
+        saldo = d.get("saldo", 0.0)
+        signo = "+" if saldo > 0 else ""
+
+        pagaron_list = d.get("policias_pagaron", [])
+        deben_list = d.get("policias_deben", [])
+
+        texto_pagaron = "Ninguno registrado"
+        if pagaron_list:
+            texto_pagaron = "\n".join([f"    • {p.get('nombre') or p.get('policia', 'Policía')}: {p.get('tickets', 0)} tk (S/ {p.get('monto', 0):.2f}) [{p.get('medio', 'EFECTIVO')}]" for p in pagaron_list])
+
+        texto_deben = "Ninguno registrado"
+        if deben_list:
+            texto_deben = "\n".join([f"    • {p.get('nombre') or p.get('policia', 'Policía')}: {p.get('tickets', 0)} tk (S/ {p.get('monto', 0):.2f})" for p in deben_list])
+
+        texto = (
+            f"🌟 *REPORTE FINANCIERO Y TICKETS DEL DÍA — {sede_name.upper()}*\n"
+            f"📅 *Fecha:* {dia_sem.upper()} {fecha_str}\n"
+            f"───────────────────────────\n"
+            f"🏪 *VENTA DEL LOCAL (MOSTRADOR):* S/ {v_local:,.2f}\n"
+            f"  • Efectivo: S/ {efectivo:,.2f}\n"
+            f"  • Yape / Digital: S/ {yape:,.2f}\n"
+            f"👮 *SOLO TICKETS PNP:* {cant_tk} tickets = S/ {v_tk:,.2f}\n"
+            f"📈 *TOTAL VENTA GENERAL:* S/ {v_tot:,.2f}\n"
+            f"───────────────────────────\n"
+            f"💸 *EGRESOS DEL DÍA:* S/ {e_tot:,.2f}\n"
+            f"  • Compras / Insumos: S/ {compras:,.2f}\n"
+            f"  • Gastos Generales: S/ {gastos:,.2f}\n"
+            f"  • Pago Personal: S/ {personal:,.2f}\n"
+            f"───────────────────────────\n"
+            f"⚖️ *SALDO NETO DEL DÍA:* {signo}S/ {saldo:,.2f}\n"
+            f"───────────────────────────\n"
+            f"👮 *COBRANZAS DEL DÍA:*\n"
+            f"  🟢 *Pagaron Tickets:*\n{texto_pagaron}\n"
+            f"  🔴 *Deben Tickets:*\n{texto_deben}\n"
+            f"🌟 *LA PROVINCIAL* — Sistema de Control"
+        )
+        QApplication.clipboard().setText(texto)
+        ToastManager.show_success(f"¡Reporte del día {fecha_str} copiado para WhatsApp!", self)
+
     def _copiar_whatsapp_mes(self):
         res = self.cached_resumen
         if not res:
@@ -640,20 +789,24 @@ class CalendarioFinancieroView(QWidget):
         mes_nombre = self.combo_periodo.currentText()
         signo = "+" if res.get('saldo_neto', 0) > 0 else ""
 
+        v_local = res.get("venta_local", round(res.get("efectivo", 0) + res.get("yape", 0), 2))
+        cant_tk = res.get("cantidad_tickets", 0)
+        v_tk = res.get("venta_tickets", 0.0)
+
         texto = (
-            f"🌟 *REPORTE FINANCIERO MENSUAL — {sede_name.upper()}*\n"
+            f"🌟 *REPORTE FINANCIERO Y TICKETS MENSUAL — {sede_name.upper()}*\n"
             f"📅 *Período:* {mes_nombre}\n"
             f"───────────────────────────\n"
-            f"💵 *INGRESOS / VENTAS:*\n"
+            f"🏪 *VENTA DEL LOCAL (MOSTRADOR):* S/ {v_local:,.2f}\n"
             f"  • Efectivo: S/ {res.get('efectivo', 0):,.2f}\n"
             f"  • Yape / Digital: S/ {res.get('yape', 0):,.2f}\n"
-            f"  • Tickets PNP ({res.get('cantidad_tickets', 0)}): S/ {res.get('venta_tickets', 0):,.2f}\n"
-            f"  ➜ *TOTAL VENTAS:* S/ {res.get('total_ventas', 0):,.2f}\n"
+            f"👮 *SOLO TICKETS PNP:* {cant_tk} tickets = S/ {v_tk:,.2f}\n"
+            f"📈 *TOTAL VENTAS GENERAL:* S/ {res.get('total_ventas', 0):,.2f}\n"
             f"───────────────────────────\n"
-            f"💸 *EGRESOS OPERATIVOS:*\n"
+            f"💸 *EGRESOS OPERATIVOS:* S/ {res.get('total_egresos', 0):,.2f}\n"
             f"  • Compras / Insumos: S/ {res.get('total_compras', 0):,.2f}\n"
+            f"  • Gastos Generales: S/ {res.get('total_gastos', 0):,.2f}\n"
             f"  • Planilla / Personal: S/ {res.get('total_personal', 0):,.2f}\n"
-            f"  ➜ *TOTAL EGRESOS:* S/ {res.get('total_egresos', 0):,.2f}\n"
             f"───────────────────────────\n"
             f"⚖️ *SALDO NETO:* {signo}S/ {res.get('saldo_neto', 0):,.2f}\n"
             f"📊 *Rentabilidad Neta:* {res.get('rentabilidad_pct', 0):.1f}%\n"
@@ -687,13 +840,18 @@ class CalendarioFinancieroView(QWidget):
         # 1. Update KPIs
         res = self.financiero_service.get_resumen_financiero_mes(anio, mes, local)
         self.cached_resumen = res
+        v_local = res.get("venta_local", round(res.get("efectivo", 0) + res.get("yape", 0), 2))
+        cant_tk = res.get("cantidad_tickets", 0)
+        v_tk = res.get("venta_tickets", 0.0)
+
         self._update_kpi(self.card_ventas, f"S/ {res['total_ventas']:,.2f}")
+        self._update_kpi(self.card_local, f"S/ {v_local:,.2f}")
+        self._update_kpi(self.card_tickets, f"{cant_tk} tk (S/ {v_tk:,.2f})")
         self._update_kpi(self.card_egresos, f"S/ {res['total_egresos']:,.2f}")
         
         saldo = res["saldo_neto"]
         signo = "+" if saldo > 0 else ""
         self._update_kpi(self.card_saldo, f"{signo}S/ {saldo:,.2f}")
-        self._update_kpi(self.card_rentabilidad, f"{res['rentabilidad_pct']:.1f}%")
 
         # 2. Get Data Rows
         dias = self.financiero_service.get_calendario_financiero_mes(anio, mes, local)
@@ -713,8 +871,8 @@ class CalendarioFinancieroView(QWidget):
             lbl_header = QLabel(col_name)
             lbl_header.setAlignment(Qt.AlignCenter)
             is_weekend = col in (5, 6)
-            bg_col = "#1E1B4B" if is_weekend else "#1E293B"
-            txt_col = "#A5B4FC" if is_weekend else "#94A3B8"
+            bg_col = "#7F1D1D" if is_weekend else "#1E293B"
+            txt_col = "#FCA5A5" if is_weekend else "#94A3B8"
             lbl_header.setStyleSheet(f"""
                 background-color: {bg_col};
                 color: {txt_col};
@@ -741,15 +899,19 @@ class CalendarioFinancieroView(QWidget):
             self.table.setItem(r, 0, QTableWidgetItem(d["fecha"]))
             self.table.setItem(r, 1, QTableWidgetItem(str(d["dia"])))
             self.table.setItem(r, 2, QTableWidgetItem(d["dia_semana"]))
-            self.table.setItem(r, 3, QTableWidgetItem(f"{d['efectivo']:,.2f}"))
-            self.table.setItem(r, 4, QTableWidgetItem(f"{d['yape']:,.2f}"))
-            self.table.setItem(r, 5, QTableWidgetItem(str(d["cantidad_tickets"])))
-            self.table.setItem(r, 6, QTableWidgetItem(f"{d['venta_tickets']:,.2f}"))
-            self.table.setItem(r, 7, QTableWidgetItem(f"{d['venta_total']:,.2f}"))
-            self.table.setItem(r, 8, QTableWidgetItem(f"{d['compras']:,.2f}"))
-            self.table.setItem(r, 9, QTableWidgetItem(f"{d['gastos']:,.2f}"))
-            self.table.setItem(r, 10, QTableWidgetItem(f"{d['personal']:,.2f}"))
-            self.table.setItem(r, 11, QTableWidgetItem(f"{d['total_egresos']:,.2f}"))
+            self.table.setItem(r, 3, QTableWidgetItem(f"S/ {d.get('venta_local', 0.0):,.2f}"))
+            self.table.setItem(r, 4, QTableWidgetItem(str(d["cantidad_tickets"])))
+            self.table.setItem(r, 5, QTableWidgetItem(f"S/ {d['venta_tickets']:,.2f}"))
+            
+            it_vtot = QTableWidgetItem(f"S/ {d['venta_total']:,.2f}")
+            it_vtot.setFont(QFont("Segoe UI", 9, QFont.Bold))
+            it_vtot.setForeground(QColor("#10B981"))
+            self.table.setItem(r, 6, it_vtot)
+
+            self.table.setItem(r, 7, QTableWidgetItem(f"S/ {d['compras']:,.2f}"))
+            self.table.setItem(r, 8, QTableWidgetItem(f"S/ {d['gastos']:,.2f}"))
+            self.table.setItem(r, 9, QTableWidgetItem(f"S/ {d['personal']:,.2f}"))
+            self.table.setItem(r, 10, QTableWidgetItem(f"S/ {d['total_egresos']:,.2f}"))
 
             saldo_val = d['saldo']
             signo_d = "+" if saldo_val > 0 else ""
@@ -762,4 +924,23 @@ class CalendarioFinancieroView(QWidget):
             else:
                 saldo_item.setForeground(QColor("#94A3B8"))
 
-            self.table.setItem(r, 12, saldo_item)
+            self.table.setItem(r, 11, saldo_item)
+
+            # Botón WhatsApp directo por día
+            btn_wa_dia = QPushButton("📲 WhatsApp")
+            btn_wa_dia.setCursor(Qt.PointingHandCursor)
+            btn_wa_dia.setStyleSheet("""
+                QPushButton {
+                    background-color: #047857;
+                    color: #FFFFFF;
+                    font-size: 10px;
+                    font-weight: 700;
+                    border-radius: 4px;
+                    padding: 3px 6px;
+                }
+                QPushButton:hover {
+                    background-color: #059669;
+                }
+            """)
+            btn_wa_dia.clicked.connect(lambda _, row_data=d: self._copiar_whatsapp_dia(row_data))
+            self.table.setCellWidget(r, 12, btn_wa_dia)

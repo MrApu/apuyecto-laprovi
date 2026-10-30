@@ -76,3 +76,8 @@ def test_all_views_have_no_edit_triggers():
     # 12. CalendarioView (List table)
     v_cal = CalendarioView()
     assert v_cal.table.editTriggers() == QTableWidget.NoEditTriggers
+
+    # 13. CalendarioFinancieroView
+    from views.calendario_financiero_view import CalendarioFinancieroView
+    v_fin = CalendarioFinancieroView()
+    assert v_fin.table.editTriggers() == QTableWidget.NoEditTriggers
