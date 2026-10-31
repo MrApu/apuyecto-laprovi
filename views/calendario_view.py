@@ -6,12 +6,13 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QComboBox, QMessageBox,
     QFrame, QScrollArea, QDialog, QSizePolicy, QButtonGroup, QSpinBox,
-    QLineEdit, QStackedWidget
+    QLineEdit, QStackedWidget, QApplication
 )
 from PySide6.QtCore import Qt, Signal, QPoint
 from PySide6.QtGui import QColor, QFont, QCursor
 
 from models.ticket import TicketDiario, DIAS_SEMANA_ES
+from models.vale import Vale
 from models.local import LOCAL_RESTAURANTE, LOCAL_FAST_FOOD, LOCAL_CONSOLIDADO, LOCAL_NAMES
 from services.ticket_service import TicketService
 from services.venta_service import VentaService
@@ -25,14 +26,15 @@ from views.dialogs.grafica_policial_dialog import GraficaPolicialDialog
 class DiaTicketGridCell(QFrame):
     """
     Widget interactivo para cada día del mes en la cuadrícula de tickets.
-    Permite ver el resumen rápido y con doble clic abre el diálogo emergente de edición.
+    Permite ver el resumen rápido (tickets y vales) y con doble clic abre el diálogo emergente de edición.
     """
     doubleClicked = Signal(str)  # Emite la fecha (YYYY-MM-DD)
     clicked = Signal(str)
 
-    def __init__(self, ticket_diario: Optional[TicketDiario] = None, dia_num: int = 0, es_otro_mes: bool = False, parent=None):
+    def __init__(self, ticket_diario: Optional[TicketDiario] = None, vale: Optional[Vale] = None, dia_num: int = 0, es_otro_mes: bool = False, parent=None):
         super().__init__(parent)
         self.ticket_diario = ticket_diario
+        self.vale = vale
         self.dia_num = dia_num
         self.es_otro_mes = es_otro_mes
         self.setCursor(QCursor(Qt.PointingHandCursor) if not es_otro_mes else QCursor(Qt.ArrowCursor))
@@ -62,8 +64,11 @@ class DiaTicketGridCell(QFrame):
             return
 
         td = self.ticket_diario
+        vl = self.vale
         tot = td.total_policias if td else 0
-        has_vales = (td.vales_policiales > 0) if td else False
+        v_ent = vl.vales_entregados if vl else 0
+        v_canj = vl.vales_consumidos if vl else (td.vales_policiales if td else 0)
+        has_vales = (v_ent > 0 or v_canj > 0)
         has_obs = bool(td.observacion and td.observacion.strip()) if td else False
 
         # Base style depending on activity
@@ -115,7 +120,7 @@ class DiaTicketGridCell(QFrame):
         layout.addLayout(header_l)
 
         # Content Chips
-        if td and (td.para_unidad > 0 or td.local > 0 or td.vales_policiales > 0):
+        if td and (td.para_unidad > 0 or td.local > 0 or has_vales):
             # Row 1: Unidad & Local
             h_det = QHBoxLayout()
             h_det.setContentsMargins(0, 0, 0, 0)
@@ -133,18 +138,22 @@ class DiaTicketGridCell(QFrame):
             h_det.addStretch()
             layout.addLayout(h_det)
 
-            # Row 2: Total Badge
+            # Row 2: Total Badge y Vales
             h_tot = QHBoxLayout()
             h_tot.setContentsMargins(0, 0, 0, 0)
+            h_tot.setSpacing(3)
             
-            lbl_tot_badge = QLabel(f"🎫 TOTAL: {tot}")
-            lbl_tot_badge.setStyleSheet("background-color: #1E1B4B; color: #A5B4FC; border: 1px solid #3730A3; padding: 3px 6px; border-radius: 4px; font-size: 11px; font-weight: 900;")
+            lbl_tot_badge = QLabel(f"🎫 {tot}")
+            lbl_tot_badge.setStyleSheet("background-color: #1E1B4B; color: #A5B4FC; border: 1px solid #3730A3; padding: 2px 5px; border-radius: 4px; font-size: 10px; font-weight: 900;")
+            lbl_tot_badge.setToolTip(f"Total Tickets: {tot} (Unidad {td.para_unidad} + Local {td.local})")
             h_tot.addWidget(lbl_tot_badge)
             
             if has_vales:
-                lbl_val = QLabel(f"🎟️ {td.vales_policiales}")
-                lbl_val.setStyleSheet("background-color: #581C87; color: #E9D5FF; padding: 2px 4px; border-radius: 4px; font-size: 10px; font-weight: bold;")
-                lbl_val.setToolTip(f"Vales: {td.vales_policiales}")
+                saldo_v = v_ent - v_canj
+                signo_v = "+" if saldo_v > 0 else ""
+                lbl_val = QLabel(f"🎟️ {v_ent}e|{v_canj}c")
+                lbl_val.setStyleSheet("background-color: #581C87; color: #E9D5FF; padding: 2px 4px; border-radius: 4px; font-size: 9px; font-weight: bold;")
+                lbl_val.setToolTip(f"Vales: {v_ent} entregados, {v_canj} canjeados | Saldo restante: {signo_v}{saldo_v}")
                 h_tot.addWidget(lbl_val)
                 
             h_tot.addStretch()
@@ -158,12 +167,18 @@ class DiaTicketGridCell(QFrame):
 
         # Tooltip with full detail
         if td:
+            saldo_v = v_ent - v_canj
+            signo_v = "+" if saldo_v > 0 else ""
             tooltip_txt = (
                 f"📅 {td.dia_semana} {td.fecha}\n"
-                f"👮 Para Unidad: {td.para_unidad}\n"
-                f"🍽️ En Local: {td.local}\n"
-                f"🎫 Total Policías: {td.total_policias}\n"
-                f"🎟️ Vales Policiales: {td.vales_policiales}\n"
+                f"───────────────────────────\n"
+                f"👮 Tickets Para Unidad: {td.para_unidad}\n"
+                f"🍽️ Tickets en Local: {td.local}\n"
+                f"🎫 Total Tickets Policiales: {td.total_policias}\n"
+                f"───────────────────────────\n"
+                f"📤 Vales Entregados: {v_ent}\n"
+                f"📥 Vales Canjeados: {v_canj}\n"
+                f"⚖️ Vales Restantes: {signo_v}{saldo_v}\n"
             )
             if td.observacion:
                 tooltip_txt += f"📝 Observación: {td.observacion}\n"
@@ -208,6 +223,8 @@ class CalendarioView(QWidget):
         self.current_local = LOCAL_RESTAURANTE
         self.diarios: List[TicketDiario] = []
         self.diarios_map: Dict[str, TicketDiario] = {}
+        self.con_vales: List[Dict[str, Any]] = []
+        self.vales_map: Dict[str, Vale] = {}
 
         self._init_ui()
         self._cargar_combo_periodos()
@@ -247,8 +264,8 @@ class CalendarioView(QWidget):
         btn_next.clicked.connect(self._on_next_month)
         header.addWidget(btn_next)
 
-        # View Mode Switcher
-        self.btn_view_grid = QPushButton("📅 Calendario")
+        # View Mode Switcher: 0: Cuadrícula, 1: Lista Tickets, 2: Control Vales y Canjes
+        self.btn_view_grid = QPushButton("📅 Cuadrícula")
         self.btn_view_grid.setCheckable(True)
         self.btn_view_grid.setChecked(True)
         self.btn_view_grid.setStyleSheet("""
@@ -257,7 +274,7 @@ class CalendarioView(QWidget):
         """)
         self.btn_view_grid.clicked.connect(lambda: self._set_view_mode(0))
 
-        self.btn_view_list = QPushButton("📋 Lista")
+        self.btn_view_list = QPushButton("📋 Lista Tickets")
         self.btn_view_list.setCheckable(True)
         self.btn_view_list.setStyleSheet("""
             QPushButton { background: #1E293B; color: #94A3B8; padding: 6px 12px; border-radius: 6px; font-weight: bold; }
@@ -265,8 +282,18 @@ class CalendarioView(QWidget):
         """)
         self.btn_view_list.clicked.connect(lambda: self._set_view_mode(1))
 
+        self.btn_view_vales = QPushButton("🎟️ Vales y Canjes vs Tickets")
+        self.btn_view_vales.setCheckable(True)
+        self.btn_view_vales.setStyleSheet("""
+            QPushButton { background: #1E293B; color: #94A3B8; padding: 6px 14px; border-radius: 6px; font-weight: bold; }
+            QPushButton:checked { background: #DC2626; color: white; }
+            QPushButton:hover { border: 1px solid #DC2626; }
+        """)
+        self.btn_view_vales.clicked.connect(lambda: self._set_view_mode(2))
+
         header.addWidget(self.btn_view_grid)
         header.addWidget(self.btn_view_list)
+        header.addWidget(self.btn_view_vales)
 
         btn_config = QPushButton("⚙️ Configuración")
         btn_config.setStyleSheet("""
@@ -328,7 +355,7 @@ class CalendarioView(QWidget):
         kpi_layout.addWidget(self.card_tarifa)
         layout.addLayout(kpi_layout)
 
-        # 3. Stacked Area for Views (0: Grid Calendar, 1: List Table)
+        # 3. Stacked Area for Views (0: Grid Calendar, 1: List Table, 2: Control Vales y Canjes)
         self.stack = QStackedWidget()
 
         # VIEW 0: Grid Calendar
@@ -338,6 +365,10 @@ class CalendarioView(QWidget):
         # VIEW 1: List Table
         self.widget_list = self._build_list_view()
         self.stack.addWidget(self.widget_list)
+
+        # VIEW 2: Control de Vales y Canjes vs Tickets
+        self.widget_vales = self._build_vales_view()
+        self.stack.addWidget(self.widget_vales)
 
         layout.addWidget(self.stack, 1)
 
@@ -454,10 +485,94 @@ class CalendarioView(QWidget):
 
         return container
 
+    def _build_vales_view(self) -> QWidget:
+        container = QWidget()
+        l = QVBoxLayout(container)
+        l.setContentsMargins(0, 0, 0, 0)
+        l.setSpacing(10)
+
+        # 1. Top KPI Summary Cards for Vales & Tickets (Segmento Especializado)
+        kpi_row = QHBoxLayout()
+        kpi_row.setSpacing(10)
+
+        self.kpi_val_entregados = self._create_kpi_card("VALES ENTREGADOS MES", "0", "#F59E0B", "📤")
+        self.kpi_val_canjeados = self._create_kpi_card("VALES CANJEADOS (TOTAL)", "0", "#10B981", "📥")
+        self.kpi_val_saldo = self._create_kpi_card("VALES RESTANTES (SALDO)", "0", "#38BDF8", "⚖️")
+        self.kpi_tk_unidad = self._create_kpi_card("TICKETS A UNIDAD", "0", "#0284C7", "👮")
+        self.kpi_tk_local = self._create_kpi_card("TICKETS EN LOCAL", "0", "#34D399", "🍽️")
+        self.kpi_tk_total = self._create_kpi_card("TOTAL TICKETS CONSUMIDOS", "0", "#A5B4FC", "🎫")
+
+        kpi_row.addWidget(self.kpi_val_entregados)
+        kpi_row.addWidget(self.kpi_val_canjeados)
+        kpi_row.addWidget(self.kpi_val_saldo)
+        kpi_row.addWidget(self.kpi_tk_unidad)
+        kpi_row.addWidget(self.kpi_tk_local)
+        kpi_row.addWidget(self.kpi_tk_total)
+        l.addLayout(kpi_row)
+
+        # 2. Section Sub-Toolbar
+        bar = QHBoxLayout()
+        info_lbl = QLabel("💡 <b>Control de Canjes vs Entregas:</b> Los vales canjeados se descuentan de los entregados en tiempo real. Doble clic en cualquier fila para editar.")
+        info_lbl.setStyleSheet("background-color: #141414; color: #E4E4E7; padding: 8px 14px; border-radius: 6px; border: 1px solid #27272A; font-size: 11px;")
+        bar.addWidget(info_lbl, 1)
+
+        btn_wa_vales = QPushButton("📲 Copiar WhatsApp (Vales y Tickets)")
+        btn_wa_vales.setCursor(Qt.PointingHandCursor)
+        btn_wa_vales.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #047857, stop:1 #10B981);
+                color: #FFFFFF;
+                font-weight: 800;
+                font-size: 12px;
+                padding: 7px 14px;
+                border-radius: 6px;
+                border: 1px solid #34D399;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #065F46, stop:1 #059669);
+            }
+        """)
+        btn_wa_vales.clicked.connect(self._copiar_whatsapp_vales)
+        bar.addWidget(btn_wa_vales)
+
+        l.addLayout(bar)
+
+        # 3. Dedicated Table for Vales and Tickets
+        self.table_vales = QTableWidget()
+        headers = [
+            "Fecha", "Día", "Tickets Unidad", "Tickets Local", "Total Tickets",
+            "Vales Entregados", "Vales Canjeados", "Vales Restantes (Día)", "Saldo Acumulado",
+            "Observaciones", "Acción"
+        ]
+        self.table_vales.setColumnCount(len(headers))
+        self.table_vales.setHorizontalHeaderLabels(headers)
+        self.table_vales.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.table_vales.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.table_vales.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.table_vales.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.table_vales.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        self.table_vales.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        self.table_vales.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeToContents)
+        self.table_vales.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeToContents)
+        self.table_vales.horizontalHeader().setSectionResizeMode(8, QHeaderView.ResizeToContents)
+        self.table_vales.horizontalHeader().setSectionResizeMode(9, QHeaderView.Stretch)
+        self.table_vales.horizontalHeader().setSectionResizeMode(10, QHeaderView.Fixed)
+        self.table_vales.setColumnWidth(10, 110)
+        self.table_vales.setAlternatingRowColors(True)
+        self.table_vales.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table_vales.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table_vales.cellDoubleClicked.connect(self._on_table_vales_cell_double_clicked)
+        l.addWidget(self.table_vales)
+
+        return container
+
     def _set_view_mode(self, mode: int):
         self.stack.setCurrentIndex(mode)
         self.btn_view_grid.setChecked(mode == 0)
         self.btn_view_list.setChecked(mode == 1)
+        self.btn_view_vales.setChecked(mode == 2)
+        if mode == 2:
+            self._render_vales_view()
 
     def _cargar_combo_periodos(self):
         self.combo_periodo.blockSignals(True)
@@ -517,12 +632,16 @@ class CalendarioView(QWidget):
 
         self.diarios = self.ticket_service.get_calendario_mes(anio, mes, local_id=local)
         self.diarios_map = {d.fecha: d for d in self.diarios}
+        self.con_vales = self.ticket_service.get_calendario_con_vales(anio, mes, local_id=local)
+        self.vales_map = {d["fecha"]: d["vale"] for d in self.con_vales if d.get("vale")}
 
         # 1. Update KPI Summary
         tot_u = sum(d.para_unidad for d in self.diarios)
         tot_l = sum(d.local for d in self.diarios)
         tot_p = sum(d.total_policias for d in self.diarios)
-        tot_v = sum(d.vales_policiales for d in self.diarios)
+        tot_ent = sum(d["vales_entregados"] for d in self.con_vales)
+        tot_canj = sum(d["vales_canjeados"] for d in self.con_vales)
+        tot_saldo_vales = tot_ent - tot_canj
         dias_activos = sum(1 for d in self.diarios if d.total_policias > 0)
         promedio = (tot_p / dias_activos) if dias_activos > 0 else 0.0
         tarifa_actual = self.config_repo.get_float("precio_menu_policial", 15.0)
@@ -530,7 +649,8 @@ class CalendarioView(QWidget):
         self._update_kpi(self.card_tot_tickets, f"{tot_p:,} tickets")
         self._update_kpi(self.card_unidad, f"{tot_u:,}")
         self._update_kpi(self.card_local, f"{tot_l:,}")
-        self._update_kpi(self.card_vales, f"{tot_v:,}")
+        signo_v = "+" if tot_saldo_vales > 0 else ""
+        self._update_kpi(self.card_vales, f"{tot_canj:,} canj ({signo_v}{tot_saldo_vales} rest)" if tot_ent > 0 else f"{tot_canj:,} canj")
         self._update_kpi(self.card_promedio, f"{promedio:.1f} / día")
         self._update_kpi(self.card_tarifa, f"S/ {tarifa_actual:.2f}")
 
@@ -539,6 +659,9 @@ class CalendarioView(QWidget):
 
         # 3. Render List View
         self._render_list_view()
+
+        # 4. Render Specialized Vales View
+        self._render_vales_view()
 
     def _render_grid_view(self):
         # Clear existing grid cells
@@ -557,6 +680,7 @@ class CalendarioView(QWidget):
                 else:
                     fecha_str = f"{anio:04d}-{mes:02d}-{dia_num:02d}"
                     td = self.diarios_map.get(fecha_str)
+                    vl = self.vales_map.get(fecha_str)
                     if not td:
                         td = TicketDiario(
                             fecha=fecha_str,
@@ -570,7 +694,7 @@ class CalendarioView(QWidget):
                             total_policias=0,
                             vales_policiales=0
                         )
-                    cell = DiaTicketGridCell(ticket_diario=td, dia_num=dia_num, es_otro_mes=False)
+                    cell = DiaTicketGridCell(ticket_diario=td, vale=vl, dia_num=dia_num, es_otro_mes=False)
                     cell.doubleClicked.connect(self._abrir_dialogo_edicion)
 
                 self.grid_layout.addWidget(cell, r, c)
@@ -667,25 +791,30 @@ class CalendarioView(QWidget):
         if not td:
             return
 
+        vl = self.vales_map.get(fecha_str)
+
         # Check if there is a next day in this month
         dt = datetime.strptime(fecha_str, "%Y-%m-%d")
         num_dias = calendar.monthrange(dt.year, dt.month)[1]
         tiene_siguiente = dt.day < num_dias
 
-        def _guardar_callback(ticket_mod: TicketDiario, motivo_ajuste: Optional[str]):
-            ok, msg, _ = self.ticket_service.guardar_ticket_diario(
+        def _guardar_callback(ticket_mod: TicketDiario, val_ent: int = 0, val_canj: int = 0, motivo_ajuste: Optional[str] = None):
+            ok, msg = self.ticket_service.guardar_ticket_y_vales(
                 fecha=ticket_mod.fecha,
                 para_unidad=ticket_mod.para_unidad,
                 local=ticket_mod.local,
-                vales_policiales=ticket_mod.vales_policiales,
+                vales_entregados=val_ent,
+                vales_canjeados=val_canj,
                 local_id=self.current_local,
                 observacion=ticket_mod.observacion,
                 motivo_ajuste=motivo_ajuste
             )
             if ok:
                 self.venta_service.sincronizar_desde_calendario(ticket_mod.fecha)
+                rest = val_ent - val_canj
+                signo = "+" if rest > 0 else ""
                 ToastManager.show_success(
-                    f"Guardado {ticket_mod.fecha}: {ticket_mod.total_policias} tickets (U:{ticket_mod.para_unidad} + L:{ticket_mod.local})",
+                    f"Guardado {ticket_mod.fecha}: {ticket_mod.total_policias} tickets (U:{ticket_mod.para_unidad} + L:{ticket_mod.local}) | Vales: {val_ent} ent, {val_canj} canj ({signo}{rest} rest)",
                     self
                 )
                 self.cargar_datos()
@@ -694,6 +823,7 @@ class CalendarioView(QWidget):
 
         dlg = DiaTicketDialog(
             ticket_diario=td,
+            vale=vl,
             parent=self,
             on_save_callback=_guardar_callback,
             tiene_siguiente=tiene_siguiente
@@ -701,6 +831,164 @@ class CalendarioView(QWidget):
 
         dlg.siguiente_dia_solicitado.connect(self._abrir_siguiente_dia)
         dlg.exec()
+
+    def _on_table_vales_cell_double_clicked(self, row: int, col: int):
+        item = self.table_vales.item(row, 0)
+        if item and item.text():
+            self._abrir_dialogo_edicion(item.text())
+
+    def _render_vales_view(self):
+        if not hasattr(self, "table_vales") or not self.con_vales:
+            return
+
+        con_vales = self.con_vales
+        self.table_vales.setRowCount(len(con_vales))
+
+        tot_ent = sum(d["vales_entregados"] for d in con_vales)
+        tot_canj = sum(d["vales_canjeados"] for d in con_vales)
+        tot_saldo = tot_ent - tot_canj
+        tot_u = sum(d["para_unidad"] for d in con_vales)
+        tot_l = sum(d["local"] for d in con_vales)
+        tot_t = sum(d["total_policias"] for d in con_vales)
+
+        self._update_kpi(self.kpi_val_entregados, f"{tot_ent:,} vales")
+        self._update_kpi(self.kpi_val_canjeados, f"{tot_canj:,} canjeados")
+        signo_s = "+" if tot_saldo > 0 else ""
+        self._update_kpi(self.kpi_val_saldo, f"{signo_s}{tot_saldo:,} restantes")
+        self._update_kpi(self.kpi_tk_unidad, f"{tot_u:,} tk")
+        self._update_kpi(self.kpi_tk_local, f"{tot_l:,} tk")
+        self._update_kpi(self.kpi_tk_total, f"{tot_t:,} tk")
+
+        for r, d in enumerate(con_vales):
+            # 0. Fecha
+            it_f = QTableWidgetItem(d["fecha"])
+            it_f.setTextAlignment(Qt.AlignCenter)
+            self.table_vales.setItem(r, 0, it_f)
+
+            # 1. Día
+            it_d = QTableWidgetItem(d["dia_semana"])
+            it_d.setTextAlignment(Qt.AlignCenter)
+            self.table_vales.setItem(r, 1, it_d)
+
+            # 2. Tickets a Unidad
+            it_u = QTableWidgetItem(str(d["para_unidad"]))
+            it_u.setTextAlignment(Qt.AlignCenter)
+            it_u.setForeground(QColor("#38BDF8"))
+            it_u.setFont(QFont("Segoe UI", 9, QFont.Bold))
+            self.table_vales.setItem(r, 2, it_u)
+
+            # 3. Tickets en Local
+            it_l = QTableWidgetItem(str(d["local"]))
+            it_l.setTextAlignment(Qt.AlignCenter)
+            it_l.setForeground(QColor("#34D399"))
+            it_l.setFont(QFont("Segoe UI", 9, QFont.Bold))
+            self.table_vales.setItem(r, 3, it_l)
+
+            # 4. Total Tickets Día
+            it_tot = QTableWidgetItem(str(d["total_policias"]))
+            it_tot.setTextAlignment(Qt.AlignCenter)
+            it_tot.setForeground(QColor("#C7D2FE"))
+            it_tot.setFont(QFont("Segoe UI", 10, QFont.Bold))
+            self.table_vales.setItem(r, 4, it_tot)
+
+            # 5. Vales Entregados
+            it_ve = QTableWidgetItem(str(d["vales_entregados"]))
+            it_ve.setTextAlignment(Qt.AlignCenter)
+            it_ve.setForeground(QColor("#F59E0B"))
+            it_ve.setFont(QFont("Segoe UI", 9, QFont.Bold))
+            self.table_vales.setItem(r, 5, it_ve)
+
+            # 6. Vales Canjeados
+            it_vc = QTableWidgetItem(str(d["vales_canjeados"]))
+            it_vc.setTextAlignment(Qt.AlignCenter)
+            it_vc.setForeground(QColor("#10B981"))
+            it_vc.setFont(QFont("Segoe UI", 9, QFont.Bold))
+            self.table_vales.setItem(r, 6, it_vc)
+
+            # 7. Vales Restantes (Día)
+            s_dia = d["saldo_dia"]
+            signo_d = "+" if s_dia > 0 else ""
+            it_sd = QTableWidgetItem(f"{signo_d}{s_dia}")
+            it_sd.setTextAlignment(Qt.AlignCenter)
+            it_sd.setFont(QFont("Segoe UI", 9, QFont.Bold))
+            if s_dia > 0:
+                it_sd.setForeground(QColor("#38BDF8"))
+            elif s_dia < 0:
+                it_sd.setForeground(QColor("#F43F5E"))
+            else:
+                it_sd.setForeground(QColor("#94A3B8"))
+            self.table_vales.setItem(r, 7, it_sd)
+
+            # 8. Saldo Acumulado
+            s_acum = d["saldo_acumulado"]
+            signo_a = "+" if s_acum > 0 else ""
+            it_sa = QTableWidgetItem(f"{signo_a}{s_acum}")
+            it_sa.setTextAlignment(Qt.AlignCenter)
+            it_sa.setFont(QFont("Segoe UI", 9, QFont.Bold))
+            if s_acum > 0:
+                it_sa.setForeground(QColor("#FBBF24"))
+            elif s_acum < 0:
+                it_sa.setForeground(QColor("#F43F5E"))
+            else:
+                it_sa.setForeground(QColor("#94A3B8"))
+            self.table_vales.setItem(r, 8, it_sa)
+
+            # 9. Observación
+            self.table_vales.setItem(r, 9, QTableWidgetItem(d["observacion"]))
+
+            # 10. Botón Editar Día (CRUD Protegido)
+            btn_edit = QPushButton("✏️ Editar Día")
+            btn_edit.setCursor(Qt.PointingHandCursor)
+            btn_edit.setStyleSheet("""
+                QPushButton {
+                    background-color: #18181B;
+                    color: #FFFFFF;
+                    border: 1px solid #3F3F46;
+                    border-radius: 4px;
+                    padding: 3px 6px;
+                    font-size: 11px;
+                    font-weight: 700;
+                }
+                QPushButton:hover {
+                    background-color: #DC2626;
+                    border-color: #EF4444;
+                }
+            """)
+            btn_edit.clicked.connect(lambda _, fecha_target=d["fecha"]: self._abrir_dialogo_edicion(fecha_target))
+            self.table_vales.setCellWidget(r, 10, btn_edit)
+
+    def _copiar_whatsapp_vales(self):
+        con_vales = self.con_vales
+        if not con_vales:
+            return
+        tot_ent = sum(d["vales_entregados"] for d in con_vales)
+        tot_canj = sum(d["vales_canjeados"] for d in con_vales)
+        tot_saldo = tot_ent - tot_canj
+        tot_u = sum(d["para_unidad"] for d in con_vales)
+        tot_l = sum(d["local"] for d in con_vales)
+        tot_t = sum(d["total_policias"] for d in con_vales)
+        sede_name = LOCAL_NAMES.get(self.current_local, self.current_local.upper())
+        mes_nombre = self.combo_periodo.currentText()
+        signo_s = "+" if tot_saldo > 0 else ""
+
+        texto = (
+            f"🎟️ *CONTROL DIARIO DE VALES Y TICKETS POLICIALES — {sede_name.upper()}*\n"
+            f"📅 *Período:* {mes_nombre}\n"
+            f"───────────────────────────\n"
+            f"🎫 *CONSUMO DE TICKETS POLICIALES:*\n"
+            f"  • Para Unidad: {tot_u:,} tickets\n"
+            f"  • En Local: {tot_l:,} tickets\n"
+            f"  ➜ *TOTAL TICKETS ATENDIDOS:* {tot_t:,} tickets\n"
+            f"───────────────────────────\n"
+            f"🎟️ *BALANCE DE VALES POLICIALES:*\n"
+            f"  • Total Vales Entregados a la PNP: {tot_ent:,}\n"
+            f"  • Total Vales Canjeados en Local: {tot_canj:,}\n"
+            f"  ➜ *VALES RESTANTES POR CANJEAR:* {signo_s}{tot_saldo:,} vales\n"
+            f"───────────────────────────\n"
+            f"🌟 *LA PROVINCIAL* — Control de Vales y Tickets"
+        )
+        QApplication.clipboard().setText(texto)
+        ToastManager.show_success("¡Balance de vales y tickets copiado para WhatsApp!", self)
 
     def _abrir_siguiente_dia(self, fecha_actual_str: str):
         try:

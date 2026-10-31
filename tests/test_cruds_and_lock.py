@@ -73,9 +73,10 @@ def test_all_views_have_no_edit_triggers():
     v_pol = PoliciasView()
     assert v_pol.table.editTriggers() == QTableWidget.NoEditTriggers
 
-    # 12. CalendarioView (List table)
+    # 12. CalendarioView (List table & Vales table)
     v_cal = CalendarioView()
     assert v_cal.table.editTriggers() == QTableWidget.NoEditTriggers
+    assert v_cal.table_vales.editTriggers() == QTableWidget.NoEditTriggers
 
     # 13. CalendarioFinancieroView
     from views.calendario_financiero_view import CalendarioFinancieroView

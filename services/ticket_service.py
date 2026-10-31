@@ -4,18 +4,22 @@ from datetime import datetime
 from repositories.ticket_repository import TicketRepository
 from repositories.mes_repository import MesRepository
 from repositories.auditoria_repository import AuditoriaRepository
+from repositories.vale_repository import ValeRepository
 from models.ticket import TicketPolicia, TicketDiario, DIAS_SEMANA_ES
+from models.vale import Vale
 
 class TicketService:
     def __init__(
         self,
         ticket_repo: Optional[TicketRepository] = None,
         mes_repo: Optional[MesRepository] = None,
-        audit_repo: Optional[AuditoriaRepository] = None
+        audit_repo: Optional[AuditoriaRepository] = None,
+        vale_repo: Optional[ValeRepository] = None
     ):
         self.repo = ticket_repo or TicketRepository()
         self.mes_repo = mes_repo or MesRepository()
         self.audit_repo = audit_repo or AuditoriaRepository()
+        self.vale_repo = vale_repo or ValeRepository()
 
     # --- Individual Ticket Matrix ---
     def get_matriz_tickets_mes(self, mes_id: int) -> Tuple[List[dict], int, Dict[int, Dict[int, int]]]:
@@ -150,4 +154,89 @@ class TicketService:
             usuario=usuario
         )
         return True, f"Se asignaron {cantidad} tickets correctamente al policía."
+
+    # --- Control Integral de Tickets y Vales Diarios ---
+    def get_calendario_con_vales(self, anio: int, mes: int, local_id: str = "restaurante") -> List[Dict[str, Any]]:
+        """
+        Retorna la matriz diaria integrando tickets para unidad, en local,
+        vales entregados, vales canjeados y saldo de vales en circulación.
+        """
+        diarios = self.get_calendario_mes(anio, mes, local_id=local_id)
+        vales_list = self.vale_repo.get_by_mes(anio, mes, local_id=local_id)
+        vales_map = {v.fecha: v for v in vales_list}
+
+        res = []
+        saldo_acumulado = 0
+        for td in diarios:
+            vl = vales_map.get(td.fecha)
+            v_ent = vl.vales_entregados if vl else 0
+            v_canj = vl.vales_consumidos if vl else (td.vales_policiales or 0)
+            saldo_dia = v_ent - v_canj
+            saldo_acumulado += saldo_dia
+
+            res.append({
+                "fecha": td.fecha,
+                "anio": td.anio,
+                "mes": td.mes,
+                "dia": td.dia,
+                "dia_semana": td.dia_semana,
+                "para_unidad": td.para_unidad,
+                "local": td.local,
+                "total_policias": td.total_policias,
+                "vales_entregados": v_ent,
+                "vales_canjeados": v_canj,
+                "saldo_dia": saldo_dia,
+                "saldo_acumulado": saldo_acumulado,
+                "observacion": td.observacion or (vl.observacion if vl else "") or "",
+                "ticket_diario": td,
+                "vale": vl
+            })
+        return res
+
+    def guardar_ticket_y_vales(
+        self,
+        fecha: str,
+        para_unidad: int,
+        local: int,
+        vales_entregados: int,
+        vales_canjeados: int,
+        local_id: str = "restaurante",
+        observacion: Optional[str] = None,
+        usuario: str = "USUARIO",
+        motivo_ajuste: Optional[str] = None
+    ) -> Tuple[bool, str]:
+        """
+        Guarda atómicamente los tickets para unidad, en local, y los vales entregados y canjeados,
+        recalculando el saldo restante descontado en tiempo real.
+        """
+        if para_unidad < 0 or local < 0 or vales_entregados < 0 or vales_canjeados < 0:
+            return False, "Las cantidades no pueden ser negativas."
+
+        # 1. Guardar ticket diario (vales_policiales = vales_canjeados para compatibilidad histórica)
+        ok, msg, td = self.guardar_ticket_diario(
+            fecha=fecha,
+            para_unidad=para_unidad,
+            local=local,
+            vales_policiales=vales_canjeados,
+            local_id=local_id,
+            observacion=observacion,
+            usuario=usuario,
+            motivo_ajuste=motivo_ajuste
+        )
+        if not ok:
+            return False, msg
+
+        # 2. Guardar vale (descuento exacto de canjeados sobre entregados)
+        saldo = vales_entregados - vales_canjeados
+        v = Vale(
+            fecha=fecha,
+            local_id=local_id,
+            vales_entregados=vales_entregados,
+            vales_consumidos=vales_canjeados,
+            saldo=saldo,
+            observacion=observacion
+        )
+        self.vale_repo.save(v)
+
+        return True, "Ticket y vales guardados exitosamente."
 

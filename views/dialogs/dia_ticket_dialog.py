@@ -1,28 +1,40 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QSpinBox, QLineEdit, QFrame, QMessageBox, QWidget, QGridLayout
+    QSpinBox, QLineEdit, QFrame, QMessageBox, QWidget, QGridLayout,
+    QScrollArea
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor
-from typing import Optional, Callable
+from typing import Optional, Callable, Tuple
 from models.ticket import TicketDiario, DIAS_SEMANA_ES
+from models.vale import Vale
 from datetime import datetime
+import inspect
 
 class DiaTicketDialog(QDialog):
     """
     Diálogo emergente moderno e interactivo para registrar y editar
-    los tickets diarios de la policía (Para Unidad, Local, Vales y Observación).
+    los tickets diarios de la policía (Para Unidad, Local) y el control
+    integral de Vales Policiales (Vales entregados, Vales canjeados y Saldo restante).
     """
     guardado = Signal(TicketDiario)
     siguiente_dia_solicitado = Signal(str)  # Emite la fecha siguiente
 
-    def __init__(self, ticket_diario: TicketDiario, parent=None, on_save_callback: Optional[Callable] = None, tiene_siguiente: bool = False):
+    def __init__(
+        self,
+        ticket_diario: TicketDiario,
+        vale: Optional[Vale] = None,
+        parent=None,
+        on_save_callback: Optional[Callable] = None,
+        tiene_siguiente: bool = False
+    ):
         super().__init__(parent)
         self.ticket_diario = ticket_diario
+        self.vale = vale
         self.on_save_callback = on_save_callback
         self.tiene_siguiente = tiene_siguiente
-        self.setWindowTitle(f"Control Diario de Tickets — {ticket_diario.fecha}")
-        self.resize(520, 560)
+        self.setWindowTitle(f"Control Diario de Tickets y Vales — {ticket_diario.fecha}")
+        self.resize(540, 680)
         self.setModal(True)
         self._init_ui()
         self._cargar_datos()
@@ -249,24 +261,75 @@ class DiaTicketDialog(QDialog):
         sec2_layout.addWidget(self.spn_local)
         card_layout.addLayout(sec2_layout)
 
-        # Row 3: Vales Policiales
+        # Row 3: Vales Policiales: Entregados vs Canjeados
         sec3_layout = QVBoxLayout()
-        h_v = QHBoxLayout()
-        lbl_v = QLabel("🎟️ Vales Policiales (Control separado):")
-        lbl_v.setStyleSheet("color: #E2E8F0; font-size: 13px; font-weight: bold;")
-        h_v.addWidget(lbl_v)
-        h_v.addStretch()
+        sec3_layout.setSpacing(6)
 
-        for inc in [1, 5]:
+        lbl_v_header = QLabel("🎟️ Control de Vales: Entregados vs Canjeados:")
+        lbl_v_header.setStyleSheet("color: #F8FAFC; font-size: 13px; font-weight: 800; border-top: 1px dashed #334155; padding-top: 8px;")
+        sec3_layout.addWidget(lbl_v_header)
+
+        # 3A: Vales Entregados
+        h_vent = QHBoxLayout()
+        lbl_vent = QLabel("📤 Vales Entregados a la Unidad:")
+        lbl_vent.setStyleSheet("color: #F59E0B; font-size: 12px; font-weight: bold;")
+        h_vent.addWidget(lbl_vent)
+        h_vent.addStretch()
+        for inc in [1, 5, 10]:
             btn = QPushButton(f"+{inc}")
             btn.setProperty("class", "QuickBtn")
-            btn.clicked.connect(lambda _, delta=inc: self._add_vales(delta))
-            h_v.addWidget(btn)
+            btn.clicked.connect(lambda _, delta=inc: self._add_vales_entregados(delta))
+            h_vent.addWidget(btn)
+        btn_dec_vent = QPushButton("-1")
+        btn_dec_vent.setProperty("class", "QuickBtn")
+        btn_dec_vent.clicked.connect(lambda: self._add_vales_entregados(-1))
+        h_vent.addWidget(btn_dec_vent)
+        sec3_layout.addLayout(h_vent)
 
-        sec3_layout.addLayout(h_v)
-        self.spn_vales = QSpinBox()
-        self.spn_vales.setRange(0, 9999)
-        sec3_layout.addWidget(self.spn_vales)
+        self.spn_vales_entregados = QSpinBox()
+        self.spn_vales_entregados.setRange(0, 9999)
+        self.spn_vales_entregados.valueChanged.connect(self._on_values_changed)
+        sec3_layout.addWidget(self.spn_vales_entregados)
+
+        # 3B: Vales Canjeados / Consumidos
+        h_vcanj = QHBoxLayout()
+        lbl_vcanj = QLabel("📥 Vales Canjeados / Consumidos en el Día:")
+        lbl_vcanj.setStyleSheet("color: #10B981; font-size: 12px; font-weight: bold;")
+        h_vcanj.addWidget(lbl_vcanj)
+        h_vcanj.addStretch()
+        for inc in [1, 5, 10]:
+            btn = QPushButton(f"+{inc}")
+            btn.setProperty("class", "QuickBtn")
+            btn.clicked.connect(lambda _, delta=inc: self._add_vales_canjeados(delta))
+            h_vcanj.addWidget(btn)
+        btn_dec_vcanj = QPushButton("-1")
+        btn_dec_vcanj.setProperty("class", "QuickBtn")
+        btn_dec_vcanj.clicked.connect(lambda: self._add_vales_canjeados(-1))
+        h_vcanj.addWidget(btn_dec_vcanj)
+        sec3_layout.addLayout(h_vcanj)
+
+        self.spn_vales_canjeados = QSpinBox()
+        self.spn_vales_canjeados.setRange(0, 9999)
+        self.spn_vales_canjeados.valueChanged.connect(self._on_values_changed)
+        sec3_layout.addWidget(self.spn_vales_canjeados)
+
+        # Alias for backward compatibility
+        self.spn_vales = self.spn_vales_canjeados
+
+        # 3C: Live Banner Saldo de Vales
+        self.vales_saldo_card = QFrame()
+        self.vales_saldo_card.setStyleSheet("background: #0F172A; border: 1px solid #1E293B; border-radius: 6px; padding: 6px;")
+        h_val_saldo = QHBoxLayout(self.vales_saldo_card)
+        h_val_saldo.setContentsMargins(8, 4, 8, 4)
+        lbl_val_saldo_title = QLabel("⚖️ VALES RESTANTES:")
+        lbl_val_saldo_title.setStyleSheet("color: #94A3B8; font-size: 11px; font-weight: 800;")
+        self.lbl_saldo_vales_value = QLabel("0 al día")
+        self.lbl_saldo_vales_value.setStyleSheet("color: #10B981; font-size: 13px; font-weight: 900;")
+        h_val_saldo.addWidget(lbl_val_saldo_title)
+        h_val_saldo.addStretch()
+        h_val_saldo.addWidget(self.lbl_saldo_vales_value)
+        sec3_layout.addWidget(self.vales_saldo_card)
+
         card_layout.addLayout(sec3_layout)
 
         # Row 4: Observación
@@ -315,6 +378,7 @@ class DiaTicketDialog(QDialog):
 
     def _cargar_datos(self):
         td = self.ticket_diario
+        vl = self.vale
         try:
             dt = datetime.strptime(td.fecha, "%Y-%m-%d")
             dia_str = DIAS_SEMANA_ES[dt.weekday()]
@@ -329,8 +393,14 @@ class DiaTicketDialog(QDialog):
         self.lbl_sede_badge.setText((td.local_id or "RESTAURANTE").upper())
         self.spn_unidad.setValue(td.para_unidad or 0)
         self.spn_local.setValue(td.local or 0)
-        self.spn_vales.setValue(td.vales_policiales or 0)
-        self.txt_obs.setText(td.observacion or "")
+
+        # Cargar vales entregados y canjeados
+        val_ent = vl.vales_entregados if vl else 0
+        val_canj = vl.vales_consumidos if vl else (td.vales_policiales or 0)
+        self.spn_vales_entregados.setValue(val_ent)
+        self.spn_vales_canjeados.setValue(val_canj)
+
+        self.txt_obs.setText(td.observacion or (vl.observacion if vl else "") or "")
         self._on_values_changed()
 
     def _add_unidad(self, delta: int):
@@ -341,9 +411,16 @@ class DiaTicketDialog(QDialog):
         val = max(0, self.spn_local.value() + delta)
         self.spn_local.setValue(val)
 
+    def _add_vales_entregados(self, delta: int):
+        val = max(0, self.spn_vales_entregados.value() + delta)
+        self.spn_vales_entregados.setValue(val)
+
+    def _add_vales_canjeados(self, delta: int):
+        val = max(0, self.spn_vales_canjeados.value() + delta)
+        self.spn_vales_canjeados.setValue(val)
+
     def _add_vales(self, delta: int):
-        val = max(0, self.spn_vales.value() + delta)
-        self.spn_vales.setValue(val)
+        self._add_vales_canjeados(delta)
 
     def _on_values_changed(self):
         u = self.spn_unidad.value()
@@ -351,17 +428,32 @@ class DiaTicketDialog(QDialog):
         tot = u + l
         self.lbl_total_value.setText(str(tot))
 
+        # Balance de vales
+        v_ent = self.spn_vales_entregados.value()
+        v_canj = self.spn_vales_canjeados.value()
+        saldo_vales = v_ent - v_canj
+
+        if saldo_vales > 0:
+            self.lbl_saldo_vales_value.setText(f"{saldo_vales} vales pendientes de canje")
+            self.lbl_saldo_vales_value.setStyleSheet("color: #38BDF8; font-size: 13px; font-weight: 900;")
+        elif saldo_vales == 0:
+            self.lbl_saldo_vales_value.setText("0 (Vales al día)")
+            self.lbl_saldo_vales_value.setStyleSheet("color: #10B981; font-size: 13px; font-weight: 900;")
+        else:
+            self.lbl_saldo_vales_value.setText(f"⚠️ Sobrecange: {abs(saldo_vales)} canjeados de más")
+            self.lbl_saldo_vales_value.setStyleSheet("color: #F43F5E; font-size: 13px; font-weight: 900;")
+
     def _obtener_ticket_modificado(self) -> TicketDiario:
         td = self.ticket_diario
         u = self.spn_unidad.value()
         l = self.spn_local.value()
-        v = self.spn_vales.value()
+        v_canj = self.spn_vales_canjeados.value()
         obs = self.txt_obs.text().strip() or None
         
         td.para_unidad = u
         td.local = l
         td.total_policias = u + l
-        td.vales_policiales = v
+        td.vales_policiales = v_canj
         td.observacion = obs
         return td
 
@@ -371,18 +463,33 @@ class DiaTicketDialog(QDialog):
     def get_ticket_diario(self) -> TicketDiario:
         return self._obtener_ticket_modificado()
 
-    def _on_guardar_y_cerrar(self):
+    def get_vales_data(self) -> Tuple[int, int, int]:
+        ent = self.spn_vales_entregados.value()
+        canj = self.spn_vales_canjeados.value()
+        return ent, canj, ent - canj
+
+    def _ejecutar_guardado(self):
         td = self._obtener_ticket_modificado()
         if self.on_save_callback:
-            self.on_save_callback(td, self.get_motivo_ajuste())
+            sig = inspect.signature(self.on_save_callback)
+            if len(sig.parameters) >= 4:
+                self.on_save_callback(
+                    td,
+                    self.spn_vales_entregados.value(),
+                    self.spn_vales_canjeados.value(),
+                    self.get_motivo_ajuste()
+                )
+            else:
+                self.on_save_callback(td, self.get_motivo_ajuste())
         self.guardado.emit(td)
+
+    def _on_guardar_y_cerrar(self):
+        self._ejecutar_guardado()
         self.accept()
 
     def _on_guardar_y_siguiente(self):
         td = self._obtener_ticket_modificado()
-        if self.on_save_callback:
-            self.on_save_callback(td, self.get_motivo_ajuste())
-        self.guardado.emit(td)
+        self._ejecutar_guardado()
         self.siguiente_dia_solicitado.emit(td.fecha)
         self.accept()
 
